@@ -1,7 +1,7 @@
 # JESUR - Enhanced SMB Share Scanner
 
 **Version**: 2.0.0  
-**Developer**: cumakurt  
+**Developer**: Cuma KURT  
 **GitHub**: https://github.com/cumakurt/Jesur  
 **LinkedIn**: https://www.linkedin.com/in/cuma-kurt-34414917/
 
