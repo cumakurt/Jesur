@@ -1,7 +1,7 @@
 # JESUR - Gelişmiş SMB Paylaşım Tarayıcısı
 
 **Versiyon**: 2.0.0  
-**Geliştirici**: cumakurt  
+**Geliştirici**: Cuma KURT  
 **GitHub**: https://github.com/cumakurt/Jesur  
 **LinkedIn**: https://www.linkedin.com/in/cuma-kurt-34414917/
 
