@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  jesur:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: jesur:latest
+    container_name: jesur-scanner
+    volumes:
+      # ⚠️ IMPORTANT: Volume mounts save files to YOUR host machine
+      # Without these, all files are lost when container stops!
+      
+      # Mount output directory for downloaded sensitive files
+      # Files saved to /app/out_download in container appear in ./out_download/ on YOUR machine
+      - ./out_download:/app/out_download
+      
+      # Mount output directory for generated reports (HTML, JSON, CSV)
+      # Reports saved to /app/reports in container appear in ./reports/ on YOUR machine
+      - ./reports:/app/reports
+      
+      # Mount config file (read-only, prevents container from modifying your config)
+      # Optional: Only needed if using config file
+      - ./jesur.conf:/app/jesur.conf:ro
+      
+      # Mount network file if using --file option
+      # Optional: Only needed if using --file option
+      - ./networks.txt:/app/networks.txt:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+    network_mode: host  # Use host network to access SMB shares
+    # Alternative: use bridge network and expose ports
+    # ports:
+    #   - "445:445"
+    #   - "139:139"
+    restart: unless-stopped
+    # Override default command
+    # command: ["python3", "Jesur.py", "192.168.1.0/24", "-u", "user", "-p", "pass"]
+    
+    # Example: Custom output paths (uncomment and modify as needed)
+    # volumes:
+    #   - /home/user/my_scans/out_download:/app/out_download
+    #   - /home/user/my_scans/reports:/app/reports
+
