@@ -37,8 +37,4 @@
 - Enhanced path traversal protection documentation
 - Optional non-root user execution in Docker
 
-## [2.1.0] - Previous Release
-- Initial release with Docker support
-- SMB share scanning capabilities
-- Sensitive file detection
-- HTML/JSON/CSV reporting
+
