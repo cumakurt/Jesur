@@ -334,7 +334,7 @@ sudo yum install file-devel
 brew install libmagic
 ```
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### Basic Network Scan
 

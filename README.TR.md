@@ -317,7 +317,7 @@ sudo yum install file-devel
 brew install libmagic
 ```
 
-## 🚀 Hızlı Başlangıç
+##  Hızlı Başlangıç
 
 ### Temel Ağ Taraması
 
