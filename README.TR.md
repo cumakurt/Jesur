@@ -12,7 +12,7 @@
 
 JESUR, ağlar üzerindeki SMB paylaşımlarını taramak, erişim izinlerini analiz etmek, hassas dosyaları tespit etmek ve detaylı raporlar oluşturmak için tasarlanmış kapsamlı bir Python uygulamasıdır. Sızma testi uzmanları ve güvenlik profesyonelleri için geliştirilmiştir.
 
-## 🚀 Özellikler
+##  Özellikler
 
 ### Temel Yetenekler
 - **Otomatik SMB Paylaşım Keşfi** - Tüm ağları veya belirli IP aralıklarını tarama

@@ -12,7 +12,7 @@
 
 JESUR is a comprehensive Python application designed to scan SMB shares across networks, analyze access permissions, detect sensitive files, and generate detailed reports. Built for penetration testers and security professionals.
 
-## 🚀 Features
+##  Features
 
 ### Core Capabilities
 - **Automatic SMB Share Discovery** - Scan entire networks or specific IP ranges
