@@ -1,14 +1,7 @@
-"""
-JESUR - Enhanced SMB Share Scanner
-Context management module - Thread-safe shared state
-
-Developer: cumakurt
-GitHub: https://github.com/cumakurt/Jesur
-LinkedIn: https://www.linkedin.com/in/cuma-kurt-34414917/
-Version: 2.0.0
-"""
+import os
 import threading
 import time
+from queue import Queue
 from threading import Lock
 
 class ScanStatus:
@@ -102,7 +95,6 @@ scan_stats = ScanStats()
 shutdown_flag = threading.Event()
 
 # Thread-safe collections for results
-from queue import Queue
 results_queue = Queue()
 all_files_queue = Queue()
 
@@ -115,3 +107,5 @@ all_files_lock = Lock()
 # Global configuration
 verbose_mode = False
 quiet_mode = False
+# Base directory for out_download/ and reports/ (set by CLI before scan)
+output_dir = os.path.abspath('.')

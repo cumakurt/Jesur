@@ -91,13 +91,12 @@ docker build -t jesur:latest .
 ```
 
 This will:
-- Download Python 3.12-slim base image
-- Create optimized image using multi-stage build
-- Install system dependencies (libmagic, file, ca-certificates)
+- Download Python 3.9 base image
+- Install system dependencies (libmagic, file)
 - Install Python packages from requirements.txt
 - Set up working directory and environment
 
-**Build time**: ~2-5 minutes depending on internet speed (first build), faster on subsequent builds due to caching
+**Build time**: ~2-5 minutes depending on internet speed
 
 #### Step 3: Verify Installation
 
@@ -508,7 +507,7 @@ Expected output: Help menu with all available options
 
 ```bash
 # Check Python version
-python3 --version  # Should be 3.7+ (3.12 if using Docker)
+python3 --version  # Should be 3.7+
 
 # Check Docker version
 docker --version  # Should be 20.10+
@@ -814,5 +813,6 @@ If you encounter issues during installation:
 
 ---
 
-**Version**: 2.0.0
+**Last Updated**: 2024-12-09  
+**Version**: 2.1.0
 

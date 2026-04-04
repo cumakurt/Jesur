@@ -1,18 +1,12 @@
 """
-JESUR - Enhanced SMB Share Scanner
-Process scanner module - Thread-safe scan wrapper with timeout support
-
-Developer: cumakurt
-GitHub: https://github.com/cumakurt/Jesur
-LinkedIn: https://www.linkedin.com/in/cuma-kurt-34414917/
-Version: 2.0.0
+Thread-safe scan wrapper with timeout support.
 """
 
 import threading
 import time
-from typing import Dict, Any, Optional
+import traceback
+from typing import Any, Dict
 from jesur.core.scanner import scan_host as _scan_host_thread
-from jesur.core.context import scan_stats, shutdown_flag
 
 
 def scan_host_with_timeout(ip: str, timeout: int = 120, **kwargs: Any) -> Dict[str, Any]:
@@ -53,10 +47,8 @@ def scan_host_with_timeout(ip: str, timeout: int = 120, **kwargs: Any) -> Dict[s
                 nt_hash=kwargs.get('nt_hash')
             )
         except (ConnectionError, TimeoutError, OSError) as e:
-            import traceback
             scan_result['exception'] = (str(e), traceback.format_exc())
         except Exception as e:
-            import traceback
             scan_result['exception'] = (str(e), traceback.format_exc())
         finally:
             timeout_flag.set()

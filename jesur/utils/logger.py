@@ -1,11 +1,6 @@
 """
-JESUR - Enhanced SMB Share Scanner
-Logging utility module - Centralized logging configuration and helper functions
-
-Developer: cumakurt
-GitHub: https://github.com/cumakurt/Jesur
-LinkedIn: https://www.linkedin.com/in/cuma-kurt-34414917/
-Version: 2.0.0
+Logging utility module for JESUR.
+Provides centralized logging configuration and helper functions.
 """
 
 import logging
@@ -15,11 +10,11 @@ from jesur.core.context import verbose_mode, quiet_mode
 # Configure root logger
 _logger = None
 
-def get_logger(name=None):
+def get_logger():
     """Get or create logger instance."""
     global _logger
     if _logger is None:
-        _logger = logging.getLogger('jesur' if name is None else f'jesur.{name}')
+        _logger = logging.getLogger('jesur')
         _logger.setLevel(logging.DEBUG)
         
         # Create console handler

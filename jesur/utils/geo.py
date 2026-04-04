@@ -1,12 +1,3 @@
-"""
-JESUR - Enhanced SMB Share Scanner
-Geolocation module - IP range lookup by country code
-
-Developer: cumakurt
-GitHub: https://github.com/cumakurt/Jesur
-LinkedIn: https://www.linkedin.com/in/cuma-kurt-34414917/
-Version: 2.0.0
-"""
 import ipaddress
 import requests
 from jesur.utils.cache import cache_manager

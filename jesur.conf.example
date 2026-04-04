@@ -1,0 +1,25 @@
+# Copy to jesur.conf and adjust. See INSTALL.md for details.
+
+[scan]
+# network = 192.168.1.0/24
+# file = targets.txt
+# threads = 20
+# host_timeout = 180
+
+[auth]
+# username = guest
+# password =
+# password_file = /path/to/secret.txt
+# domain = WORKGROUP
+# hashes =
+
+[filters]
+# exclude_shares = IPC$,ADMIN$
+
+[output]
+# output_dir = .
+# output_name = jesur
+# output_json = false
+# output_csv = false
+# quiet = false
+# verbose = false

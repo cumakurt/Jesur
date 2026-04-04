@@ -11,12 +11,10 @@ services:
       # ⚠️ IMPORTANT: Volume mounts save files to YOUR host machine
       # Without these, all files are lost when container stops!
       
-      # Mount output directory for downloaded sensitive files
-      # Files saved to /app/out_download in container appear in ./out_download/ on YOUR machine
+      # Mount output directory for downloaded sensitive files (matches WORKDIR /app and --output-dir default)
       - ./out_download:/app/out_download
       
-      # Mount output directory for generated reports (HTML, JSON, CSV)
-      # Reports saved to /app/reports in container appear in ./reports/ on YOUR machine
+      # Mount directory for generated reports (HTML, JSON, CSV)
       - ./reports:/app/reports
       
       # Mount config file (read-only, prevents container from modifying your config)

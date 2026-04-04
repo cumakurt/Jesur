@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 """
 JESUR - Enhanced SMB Share Scanner
 Main application module
@@ -7,6 +8,8 @@ GitHub: https://github.com/cumakurt/Jesur
 LinkedIn: https://www.linkedin.com/in/cuma-kurt-34414917/
 Version: 2.0.0
 """
+=======
+>>>>>>> 14e38d1 (change report format)
 import sys
 import os
 import argparse
@@ -17,7 +20,7 @@ import traceback
 import re
 import logging
 import configparser
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, Optional, Set, Union
 from concurrent.futures import ThreadPoolExecutor, wait
 
 # Suppress pysmb debug messages
@@ -87,6 +90,7 @@ def load_config(config_path: str) -> Dict[str, Any]:
     conf['password'] = optional(auth.get('password', '')) or ''
     conf['hashes'] = optional(auth.get('hashes', None))
     conf['domain'] = optional(auth.get('domain', 'WORKGROUP')) or 'WORKGROUP'
+    conf['password_file'] = optional(auth.get('password_file'))
 
     # Filters section
     conf['include_ext'] = optional(filters.get('include_ext'))
@@ -107,6 +111,7 @@ def load_config(config_path: str) -> Dict[str, Any]:
     conf['quiet'] = str_to_bool(output.get('quiet', False))
     conf['verbose'] = str_to_bool(output.get('verbose', False))
     conf['no_stats'] = str_to_bool(output.get('no_stats', False))
+    conf['output_dir'] = optional(output.get('output_dir')) or '.'
 
     return conf
 
@@ -123,10 +128,7 @@ def validate_config(config: Dict[str, Any]) -> bool:
     Raises:
         ValueError: If configuration contains invalid values
     """
-    from jesur.core.constants import (
-        MAX_THREADS, MIN_THREADS, TIMEOUT_HOST_DEFAULT,
-        MAX_FILE_SIZE_DEFAULT, MAX_READ_BYTES_DEFAULT
-    )
+    from jesur.core.constants import MAX_THREADS
     
     errors = []
     
@@ -180,7 +182,6 @@ def validate_config(config: Dict[str, Any]) -> bool:
     # Validate filename_pattern (regex)
     if config.get('filename_pattern'):
         try:
-            import re
             re.compile(config['filename_pattern'])
         except re.error as e:
             errors.append(f"Invalid regex pattern in filename_pattern: {e}")
@@ -211,11 +212,48 @@ def validate_config(config: Dict[str, Any]) -> bool:
                 except ValueError:
                     errors.append("Hash must be a valid hexadecimal string")
     
+    if config.get('output_dir') is not None and not isinstance(config['output_dir'], str):
+        errors.append(f"output_dir must be a string, got: {type(config['output_dir']).__name__}")
+
+    if config.get('password_file'):
+        pf = config['password_file']
+        if not isinstance(pf, str) or not pf.strip():
+            errors.append("password_file must be a non-empty path when set")
+        elif not os.path.isfile(pf):
+            errors.append(f"password_file does not exist or is not a file: {pf}")
+
     if errors:
         error_msg = "Configuration validation errors:\n" + "\n".join(f"  - {e}" for e in errors)
         raise ValueError(error_msg)
     
     return True
+
+
+def _parse_network_token(line: str) -> Union[ipaddress.IPv4Network, ipaddress.IPv6Network]:
+    """Parse a CIDR line; default mask is /32 (IPv4) or /128 (IPv6)."""
+    from jesur.core.constants import CIDR_DEFAULT_MASK, CIDR_DEFAULT_MASK_V6
+    line = line.strip()
+    if '/' not in line:
+        line = f"{line}/{CIDR_DEFAULT_MASK_V6 if ':' in line else CIDR_DEFAULT_MASK}"
+    net = ipaddress.ip_network(line, strict=False)
+    if isinstance(net, ipaddress.IPv6Network):
+        from jesur.core.constants import MIN_IPV6_PREFIX_FOR_SCAN, MAX_HOSTS_PER_SCAN
+        if net.prefixlen < MIN_IPV6_PREFIX_FOR_SCAN:
+            raise ValueError(
+                f"IPv6 range /{net.prefixlen} is too broad; use prefix length >= {MIN_IPV6_PREFIX_FOR_SCAN}"
+            )
+        if net.num_addresses > MAX_HOSTS_PER_SCAN:
+            raise ValueError(
+                f"IPv6 range has too many addresses to scan; narrow the prefix (max {MAX_HOSTS_PER_SCAN})"
+            )
+    return net
+
+
+def _estimate_host_count(net: Union[ipaddress.IPv4Network, ipaddress.IPv6Network]) -> int:
+    if isinstance(net, ipaddress.IPv4Network):
+        return max(1, net.num_addresses - 2)
+    return max(1, int(net.num_addresses))
+
 
 def signal_handler(sig, frame):
     """Handle Ctrl+C signal - immediately shutdown and save reports."""
@@ -228,11 +266,19 @@ def signal_handler(sig, frame):
         print(f"{Colors.DIM}[*] Press Ctrl+C again to force quit immediately{Colors.RESET}", flush=True)
     else:
         print(f"\n{Colors.RED}{Colors.BOLD}[!!] Force quit!{Colors.RESET}", flush=True)
-        import os
         os._exit(1)
 
 
-def load_exclude_ips(exclude_file: Optional[str]) -> Set[ipaddress.IPv4Network]:
+def _parse_exclude_network_line(line: str) -> Union[ipaddress.IPv4Network, ipaddress.IPv6Network]:
+    """Parse exclude file line (allows broad IPv6 exclusions)."""
+    from jesur.core.constants import CIDR_DEFAULT_MASK, CIDR_DEFAULT_MASK_V6
+    line = line.strip()
+    if '/' not in line:
+        line = f"{line}/{CIDR_DEFAULT_MASK_V6 if ':' in line else CIDR_DEFAULT_MASK}"
+    return ipaddress.ip_network(line, strict=False)
+
+
+def load_exclude_ips(exclude_file: Optional[str]) -> Set[Union[ipaddress.IPv4Network, ipaddress.IPv6Network]]:
     """
     Load excluded IPs/networks from file.
     
@@ -240,9 +286,9 @@ def load_exclude_ips(exclude_file: Optional[str]) -> Set[ipaddress.IPv4Network]:
         exclude_file: Path to file containing IPs/networks to exclude
         
     Returns:
-        Set of IPv4Network objects representing excluded networks
+        Set of IPv4Network/IPv6Network objects representing excluded networks
     """
-    excluded: Set[ipaddress.IPv4Network] = set()
+    excluded: Set[Union[ipaddress.IPv4Network, ipaddress.IPv6Network]] = set()
     if not exclude_file or not os.path.exists(exclude_file):
         return excluded
     
@@ -251,12 +297,8 @@ def load_exclude_ips(exclude_file: Optional[str]) -> Set[ipaddress.IPv4Network]:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith('#'):
-                    from jesur.core.constants import CIDR_DEFAULT_MASK
                     try:
-                        if '/' not in line:
-                            line = f"{line}/{CIDR_DEFAULT_MASK}"
-                        net = ipaddress.IPv4Network(line, strict=False)
-                        excluded.add(net)
+                        excluded.add(_parse_exclude_network_line(line))
                     except ValueError:
                         verbose_print(f"[!] Invalid exclude entry: {line}")
     except (IOError, OSError) as e:
@@ -270,21 +312,23 @@ def load_exclude_ips(exclude_file: Optional[str]) -> Set[ipaddress.IPv4Network]:
     
     return excluded
 
-def is_ip_excluded(ip_str: str, excluded_networks: Set[ipaddress.IPv4Network]) -> bool:
+def is_ip_excluded(ip_str: str, excluded_networks: Set[Union[ipaddress.IPv4Network, ipaddress.IPv6Network]]) -> bool:
     """
     Check if IP is in any excluded network.
     
     Args:
         ip_str: IP address as string
-        excluded_networks: Set of excluded IPv4Network objects
+        excluded_networks: Set of excluded network objects
         
     Returns:
         True if IP is excluded, False otherwise
     """
     if not excluded_networks:
         return False
-    
-    ip = ipaddress.IPv4Address(ip_str)
+    try:
+        ip = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return False
     for net in excluded_networks:
         if ip in net:
             return True
@@ -347,7 +391,7 @@ Examples:
 
     # Target specification
     group = parser.add_mutually_exclusive_group(required=False)
-    group.add_argument('network', help='Network to scan (CIDR format, e.g.: 192.168.1.0/24)', nargs='?')
+    group.add_argument('network', help='Network to scan (IPv4/IPv6 CIDR, e.g. 192.168.1.0/24 or 2001:db8::/120)', nargs='?')
     group.add_argument('-f', '--file', help='File containing networks in CIDR format')
     group.add_argument('--geo', help='Country code to scan (e.g., tr_TR, us_US)')
     group.add_argument('--geo-list', help='List all available country codes', action='store_true')
@@ -355,7 +399,8 @@ Examples:
     # Authentication
     auth_group = parser.add_argument_group('Authentication Options')
     auth_group.add_argument('-u', '--username', help='Domain username', default='guest')
-    auth_group.add_argument('-p', '--password', help='User password', default='')
+    auth_group.add_argument('-p', '--password', help='User password (if empty, uses JESUR_PASSWORD env)', default='')
+    auth_group.add_argument('--password-file', help='Read password from file (UTF-8); overrides -p and env', default=None)
     auth_group.add_argument('--hashes', help='NTLM hashes (LMHASH:NTHASH)', default=None)
     auth_group.add_argument('-d', '--domain', help='Domain name', default='WORKGROUP')
     
@@ -387,6 +432,7 @@ Examples:
     output_group.add_argument('--quiet', '-q', help='Quiet mode - minimal output', action='store_true')
     output_group.add_argument('--verbose', '-v', help='Verbose mode - detailed output', action='store_true')
     output_group.add_argument('--no-stats', help='Do not print statistics', action='store_true')
+    output_group.add_argument('--output-dir', help='Base directory for out_download/ and reports/', default='.')
     parser.add_argument('--host-timeout', help='Per-host timeout (seconds)', type=int)
 
     parser.set_defaults(**config_values)
@@ -412,6 +458,24 @@ Examples:
         list_country_codes()
         sys.exit(0)
 
+    if getattr(args, 'password_file', None):
+        if not os.path.isfile(args.password_file):
+            print(f"{Colors.RED}[!] password file not found: {args.password_file}{Colors.RESET}")
+            sys.exit(1)
+        with open(args.password_file, 'r', encoding='utf-8') as pf:
+            args.password = pf.read().strip()
+    elif not args.password and os.environ.get('JESUR_PASSWORD'):
+        args.password = os.environ['JESUR_PASSWORD']
+
+    out_base = os.path.abspath(os.path.expanduser(getattr(args, 'output_dir', None) or '.'))
+    context.output_dir = out_base
+    try:
+        os.makedirs(os.path.join(out_base, 'out_download'), exist_ok=True)
+        os.makedirs(os.path.join(out_base, 'reports'), exist_ok=True)
+    except OSError as e:
+        print(f"{Colors.RED}[!] Cannot create output directories under {out_base}: {e}{Colors.RESET}")
+        sys.exit(1)
+
     # Parse filters
     def normalize_extensions(ext_str):
         """Normalize extension string: remove dots, spaces, and empty values."""
@@ -424,13 +488,21 @@ Examples:
                 extensions.append(ext)
         return set(extensions) if extensions else None
     
+    compiled_filename_pattern = None
+    if args.filename_pattern:
+        try:
+            compiled_filename_pattern = re.compile(args.filename_pattern)
+        except re.error as e:
+            print(f"{Colors.RED}[!] Invalid filename_pattern regex: {e}{Colors.RESET}")
+            sys.exit(1)
+
     scan_filters = {
         'include_ext': normalize_extensions(args.include_ext),
         'exclude_ext': normalize_extensions(args.exclude_ext),
         'min_size': args.min_size,
         'max_size': args.max_size,
         'max_read_bytes': args.max_read_bytes,
-        'filename_pattern': re.compile(args.filename_pattern) if args.filename_pattern else None,
+        'filename_pattern': compiled_filename_pattern,
         'exclude_shares': set(s.upper().strip() for s in args.exclude_shares.split(',') if s.strip()) if args.exclude_shares else set(),
         'include_admin_shares': args.include_admin_shares,
     }
@@ -439,8 +511,19 @@ Examples:
     if args.verbose:
         verbose_print(f"[DEBUG] Exclude extensions: {scan_filters['exclude_ext']}")
         verbose_print(f"[DEBUG] Include extensions: {scan_filters['include_ext']}")
-    
-    
+        ie = scan_filters.get('include_ext')
+        if ie is not None and 'txt' not in ie:
+            verbose_print(
+                f"{Colors.YELLOW}[*] include-ext is set without 'txt' — .txt files will not be scanned.{Colors.RESET}"
+            )
+        xe = scan_filters.get('exclude_ext')
+        if xe and 'txt' in xe:
+            verbose_print(
+                f"{Colors.YELLOW}[*] exclude-ext includes 'txt' — plain-text files are skipped.{Colors.RESET}"
+            )
+        elif ie is None and (xe is None or 'txt' not in xe):
+            verbose_print(f"{Colors.DIM}[*] Plain-text files (.txt, .cfg, …) are included in content scan.{Colors.RESET}")
+
     # Add default admin shares to exclude if not explicitly included
     if not scan_filters['include_admin_shares']:
         scan_filters['exclude_shares'].update(['IPC$', 'ADMIN$', 'C$', 'D$', 'E$', 'USERS'])
@@ -490,24 +573,25 @@ Examples:
                 for line in f:
                     line = line.strip()
                     if line and not line.startswith('#'):
-                        from jesur.core.constants import CIDR_DEFAULT_MASK
                         try:
-                            if '/' not in line: line = f"{line}/{CIDR_DEFAULT_MASK}"
-                            net = ipaddress.IPv4Network(line, strict=False)
+                            net = _parse_network_token(line)
                             networks.append(net)
-                            total_hosts += max(1, net.num_addresses - 2)
-                        except ValueError:
-                            print(f"[-] Invalid network: {line}")
+                            total_hosts += _estimate_host_count(net)
+                        except ValueError as e:
+                            print(f"[-] Invalid network: {line} ({e})")
         except FileNotFoundError:
             print(f"[-] File not found: {args.file}")
             sys.exit(1)
+        if not networks:
+            print(f"{Colors.RED}[-] No valid networks in file: {args.file}{Colors.RESET}")
+            sys.exit(1)
     else:
         try:
-            net = ipaddress.IPv4Network(args.network, strict=False)
+            net = _parse_network_token(args.network)
             networks.append(net)
-            total_hosts = max(1, net.num_addresses - 2)
-        except ValueError:
-            print(f"[-] Invalid network format: {args.network}")
+            total_hosts = _estimate_host_count(net)
+        except ValueError as e:
+            print(f"[-] Invalid network format: {args.network} ({e})")
             sys.exit(1)
 
     # Threading calc
@@ -546,7 +630,6 @@ Examples:
     # Execution
     completed_hosts = 0
     start_time = time.time()
-    last_progress_update = 0
     scan_stats.start_time = start_time
     from jesur.core.constants import TIMEOUT_HOST_DEFAULT
     host_timeout = args.host_timeout if args.host_timeout else TIMEOUT_HOST_DEFAULT
@@ -751,24 +834,31 @@ Examples:
     try:
         if not args.list_shares and (results or all_files):
             quiet_print(f"[*] Saving reports...")
-            f_rep, s_rep = save_results(all_files, results, args.output_name, args, scan_stats.get_stats())
-            if f_rep:
-                quiet_print(f"{Colors.GREEN}[+] Files report:{Colors.RESET} {f_rep}")
-                quiet_print(f"{Colors.GREEN}[+] Sensitive report:{Colors.RESET} {s_rep}")
+            reports_dir = os.path.join(out_base, 'reports')
+            download_href_prefix = '../out_download/'
+            report_html, _ = save_results(
+                all_files, results, args.output_name, args, scan_stats.get_stats(),
+                reports_dir=reports_dir, download_href_prefix=download_href_prefix,
+            )
+            if report_html:
+                quiet_print(f"{Colors.GREEN}[+] HTML report:{Colors.RESET} {report_html}")
             
             # Export to JSON
             if args.output_json:
                 filenames = get_export_filenames(args.output_name, 'json')
                 if all_files:
-                    json_file = export_to_json(all_files, scan_stats.get_stats(), filenames['files'])
+                    json_path = os.path.join(reports_dir, filenames['files'])
+                    json_file = export_to_json(all_files, scan_stats.get_stats(), json_path)
                     if json_file:
                         quiet_print(f"{Colors.GREEN}[+] JSON (files):{Colors.RESET} {json_file}")
                 if results:
-                    json_sensitive = export_to_json(results, scan_stats.get_stats(), filenames['sensitive'])
+                    json_path_s = os.path.join(reports_dir, filenames['sensitive'])
+                    json_sensitive = export_to_json(results, scan_stats.get_stats(), json_path_s)
                     if json_sensitive:
                         quiet_print(f"{Colors.GREEN}[+] JSON (sensitive):{Colors.RESET} {json_sensitive}")
                 
-                stats_file = export_statistics(scan_stats.get_stats(), filenames['stats'])
+                stats_path = os.path.join(reports_dir, filenames['stats'])
+                stats_file = export_statistics(scan_stats.get_stats(), stats_path)
                 if stats_file:
                     quiet_print(f"{Colors.GREEN}[+] Statistics:{Colors.RESET} {stats_file}")
             
@@ -776,11 +866,13 @@ Examples:
             if args.output_csv:
                 filenames = get_export_filenames(args.output_name, 'csv')
                 if all_files:
-                    csv_file = export_to_csv(all_files, filenames['files'], 'files')
+                    csv_path = os.path.join(reports_dir, filenames['files'])
+                    csv_file = export_to_csv(all_files, csv_path, 'files')
                     if csv_file:
                         quiet_print(f"{Colors.GREEN}[+] CSV (files):{Colors.RESET} {csv_file}")
                 if results:
-                    csv_sensitive = export_to_csv(results, filenames['sensitive'], 'sensitive')
+                    csv_path_s = os.path.join(reports_dir, filenames['sensitive'])
+                    csv_sensitive = export_to_csv(results, csv_path_s, 'sensitive')
                     if csv_sensitive:
                         quiet_print(f"{Colors.GREEN}[+] CSV (sensitive):{Colors.RESET} {csv_sensitive}")
         else:

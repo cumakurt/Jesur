@@ -1,5 +1,5 @@
-# Changelog
 
+<<<<<<< HEAD
 ## [2.0.0]
 
 ### Added
@@ -38,3 +38,5 @@
 - Optional non-root user execution in Docker
 
 
+=======
+>>>>>>> 14e38d1 (change report format)

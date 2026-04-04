@@ -1,18 +1,10 @@
-"""
-JESUR - Enhanced SMB Share Scanner
-File analysis and sensitive content detection module
-
-Developer: cumakurt
-GitHub: https://github.com/cumakurt/Jesur
-LinkedIn: https://www.linkedin.com/in/cuma-kurt-34414917/
-Version: 2.0.0
-"""
 import os
 import json
 import re
 import magic
 import io
 import docx
+from typing import Optional
 # import pdfplumber # Imported on demand to optional dependencies don't crash everything if missing
 import openpyxl
 from jesur.utils.cache import cache_manager
@@ -35,6 +27,146 @@ except Exception as e:
     from jesur.utils.logger import log_error
     log_error(f"Could not load patterns.json: {e}", exc_info=True)
     PATTERNS = {"patterns": {}, "false_positives": [], "security_keywords": ""}
+
+# Extensions: treat as text for decoding when magic returns octet-stream or unknown.
+# .txt is always a first-class target (credentials, vpn.txt, notes); keep it in this set.
+# .tct included: occasional typo for .txt on SMB shares
+TEXT_EXTENSIONS_FOR_CONTENT_SCAN = frozenset({
+    '.txt', '.tct',
+    '.cfg', '.ini', '.log', '.conf', '.env', '.properties', '.md', '.csv', '.xml',
+    '.json', '.yml', '.yaml', '.vpn', '.toml', '.rc', '.sh', '.bat', '.ps1', '.cnf',
+    '.ovpn', '.pem', '.crt', '.csr', '.key', '.cer', '.asc', '.pub',
+})
+
+# Built-in regex categories (merged with patterns.json; JSON keys override same name)
+# Tuned to avoid minified JS (password:!0), Hunspell .dic (substring psk), Ruby Password::
+# Keywords: EN + TR (parola, sifre, şifre). Separators: = : - – (not only =) for Notepad-style notes.
+_PASSWORD_KEYWORDS = r'password|passwd|pwd|parola|sifre|şifre'
+
+DEFAULT_SENSITIVE_PATTERNS = {
+    'password_assignment': (
+        r'(?i)(?:' + _PASSWORD_KEYWORDS + r')(?!::)\s*[=:;\-–]\s*(?!true\b|false\b|!0\b|!1\b)([^\s;]{2,})'
+    ),
+    # Tab or multiple spaces between keyword and value (common in .txt / paste dumps)
+    'password_spaced_value': (
+        r'(?i)(?:' + _PASSWORD_KEYWORDS + r')(?:\t+|[\t ]{2,})(?!true\b|false\b|!0\b|!1\b)(\S{2,})'
+    ),
+    'secret_assignment': (
+        r'(?i)\bsecret\b\s*[:=]\s*(?!true\b|false\b|!0\b|!1\b)([^\s;]{3,})'
+    ),
+    'api_key_assignment': (
+        r'(?i)(api[_-]?key|access[_-]?token|client[_-]?secret)\s*[:=]\s*(?!true\b|false\b|!0\b|!1\b)(\S{8,})'
+    ),
+    'vpn_or_tunnel': (
+        r'(?i)(\bpsk\b|pre-shared|shared secret|auth-user-pass|remote\s+[\d.]+|tunnel\s+password)'
+    ),
+    'pem_private_block': r'-----BEGIN (RSA |OPENSSH |EC |DSA |ED25519 |)?PRIVATE KEY-----',
+}
+
+
+def _defaults_for_filename(filename: str) -> dict:
+    """Drop noisy default categories for minified bundles and spell dictionaries."""
+    fn = (filename or '').lower()
+    out = dict(DEFAULT_SENSITIVE_PATTERNS)
+    if fn.endswith(('.min.js', '.min.css', '.bundle.js')):
+        for k in (
+            'password_assignment', 'password_spaced_value',
+            'secret_assignment', 'api_key_assignment', 'vpn_or_tunnel',
+        ):
+            out.pop(k, None)
+    elif fn.endswith(('.dic', '.aff')):
+        out.pop('vpn_or_tunnel', None)
+    return out
+
+
+def _looks_like_text_bytes(data: bytes) -> bool:
+    """Heuristic: mostly printable ASCII / common whitespace."""
+    if not data:
+        return False
+    sample = data[:8192]
+    if len(sample) < 4:
+        return all(32 <= b <= 126 or b in (9, 10, 13) for b in sample)
+    textish = sum(1 for b in sample if 32 <= b <= 126 or b in (9, 10, 13))
+    return (textish / len(sample)) > 0.88
+
+
+def _decode_text_bytes(file_content: bytes) -> Optional[str]:
+    """
+    Decode text files from SMB shares: UTF-8 (with/without BOM), UTF-16 LE/BE (Windows Notepad),
+    then Latin-1 fallback.
+
+    UTF-16 LE without BOM must be tried BEFORE utf-8: otherwise Python accepts UTF-16-ASCII bytes
+    as valid UTF-8 (NUL U+0000 between each Latin letter), and regex never matches real words.
+    """
+    if not file_content:
+        return None
+    # UTF-8 BOM
+    if file_content.startswith(b'\xef\xbb\xbf'):
+        try:
+            return file_content.decode('utf-8-sig')
+        except UnicodeDecodeError:
+            pass
+    # UTF-16 LE / BE with BOM
+    if file_content.startswith(b'\xff\xfe'):
+        try:
+            return file_content.decode('utf-16-le')
+        except UnicodeDecodeError:
+            try:
+                return file_content.decode('utf-16')
+            except UnicodeDecodeError:
+                pass
+    if file_content.startswith(b'\xfe\xff'):
+        try:
+            return file_content.decode('utf-16-be')
+        except UnicodeDecodeError:
+            pass
+    # UTF-16 without BOM (common on Windows) — MUST run before utf-8 (see docstring)
+    if len(file_content) >= 4 and len(file_content) % 2 == 0:
+        nul_ratio = file_content.count(0) / len(file_content)
+        if nul_ratio > 0.15:
+            try:
+                return file_content.decode('utf-16-le')
+            except UnicodeDecodeError:
+                try:
+                    return file_content.decode('utf-16-be')
+                except UnicodeDecodeError:
+                    pass
+    try:
+        return file_content.decode('utf-8')
+    except UnicodeDecodeError:
+        pass
+    try:
+        return file_content.decode('utf-8-sig')
+    except UnicodeDecodeError:
+        pass
+    try:
+        return file_content.decode('latin-1')
+    except UnicodeDecodeError:
+        return None
+
+
+def _extract_text_for_pattern_scan(
+    file_content: bytes, file_type: str, filename: str
+) -> Optional[str]:
+    """Extract searchable text for pattern matching (MIME + extension fallbacks)."""
+    fn = (filename or '').lower()
+
+    if file_type.startswith('application/pdf'):
+        return extract_pdf_content(file_content)
+    if file_type == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+        return extract_docx_content(file_content)
+    if file_type == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+        return extract_xlsx_content(file_content)
+    if file_type.startswith('text/'):
+        return _decode_text_bytes(file_content)
+
+    _, ext = os.path.splitext(fn)
+    if ext in TEXT_EXTENSIONS_FOR_CONTENT_SCAN:
+        return _decode_text_bytes(file_content)
+    if _looks_like_text_bytes(file_content):
+        return _decode_text_bytes(file_content)
+    return None
+
 
 # Global magic instance for better performance
 _magic_instance = None
@@ -163,43 +295,24 @@ def extract_xlsx_content(file_content: bytes) -> str:
         log_debug(f"XLSX extraction failed: {e}")
         return None
 
-def check_sensitive_patterns(file_content: bytes, file_type: str, ip: str) -> list:
+def check_sensitive_patterns(
+    file_content: bytes, file_type: str, ip: str, filename: str = ''
+) -> list:
     """
-    Check file content for sensitive patterns defined in patterns.json.
-    
-    Args:
-        file_content: File content as bytes
-        file_type: MIME type of the file
-        ip: IP address of the host (for logging)
-        
-    Returns:
-        List of detected sensitive pattern matches
+    Check file content for sensitive patterns (defaults + patterns.json).
+
+    JSON overrides categories with the same key name. When patterns.json was
+    empty, no content matches were found; defaults fix common cases (password=,
+    VPN secrets, PEM blocks) and text extraction for .txt even if magic says
+    application/octet-stream.
     """
     results_list = []
-    content = None
-
-    # Extract text based on file type
-    if file_type.startswith('application/pdf'):
-        content = extract_pdf_content(file_content)
-    elif file_type == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
-        content = extract_docx_content(file_content)
-    elif file_type == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
-        content = extract_xlsx_content(file_content)
-    elif file_type.startswith('text/'):
-        try:
-            content = file_content.decode('utf-8')
-        except UnicodeDecodeError:
-            try:
-                content = file_content.decode('latin-1')
-            except UnicodeDecodeError:
-                from jesur.utils.logger import log_debug
-                log_debug("Failed to decode text file content")
-                return results_list
+    content = _extract_text_for_pattern_scan(file_content, file_type, filename)
 
     if not content:
         return results_list
 
-    # Check security keywords
+    # Check security keywords (optional regex in JSON)
     sec_keywords = PATTERNS.get('security_keywords', '')
     if sec_keywords:
         security_pattern = cache_manager.get_compiled_pattern(sec_keywords)
@@ -209,34 +322,29 @@ def check_sensitive_patterns(file_content: bytes, file_type: str, ip: str) -> li
                 'match': 'Contains security-related keywords'
             })
 
-    # Prepare patterns
-    sensitive_patterns = PATTERNS.get('patterns', {})
+    user_patterns = PATTERNS.get('patterns') or {}
+    sensitive_patterns = {**_defaults_for_filename(filename), **user_patterns}
     false_positives = PATTERNS.get('false_positives', [])
     compiled_fps = [cache_manager.get_compiled_pattern(fp) for fp in false_positives]
 
-    # Limit matches per category to prevent output flooding
     from jesur.core.constants import MAX_MATCHES_PER_CATEGORY
     category_counts = {}
 
     lines = content.split('\n')
     for category, pattern in sensitive_patterns.items():
-        # Compile pattern
         compiled_pattern = cache_manager.get_compiled_pattern(pattern)
         category_counts[category] = 0
-        
-        for i, line in enumerate(lines):
-            # Stop if we've found enough matches in this category
+
+        for line in lines:
             if category_counts[category] >= MAX_MATCHES_PER_CATEGORY:
                 break
-                
+
             for match in compiled_pattern.finditer(line):
                 if category_counts[category] >= MAX_MATCHES_PER_CATEGORY:
                     break
-                    
+
                 match_str = match.group(0)
-                # False positive check
                 if not any(fp.search(match_str) for fp in compiled_fps):
-                    # (Simplified context check logic here for performance)
                     results_list.append({
                         'category': category,
                         'match': match_str

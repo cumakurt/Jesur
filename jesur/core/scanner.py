@@ -1,12 +1,3 @@
-"""
-JESUR - Enhanced SMB Share Scanner
-SMB share scanning module
-
-Developer: cumakurt
-GitHub: https://github.com/cumakurt/Jesur
-LinkedIn: https://www.linkedin.com/in/cuma-kurt-34414917/
-Version: 2.0.0
-"""
 import os
 import threading
 import tempfile
@@ -17,9 +8,14 @@ import time
 from io import BytesIO
 from typing import Optional, Dict, List, Any, Tuple
 
+from jesur.core import context
 from jesur.core.context import scan_status, scan_stats, shutdown_flag, results, all_files
 from jesur.core.connection import connection_pool, retry_on_failure, check_port
-from jesur.core.analyzer import get_file_type, check_sensitive_patterns
+from jesur.core.analyzer import (
+    get_file_type,
+    check_sensitive_patterns,
+    TEXT_EXTENSIONS_FOR_CONTENT_SCAN,
+)
 from jesur.utils.cache import cache_manager
 from jesur.utils.common import Colors, colored_print, print_section, print_finding, normalize_smb_path, verbose_print, quiet_print
 
@@ -229,6 +225,93 @@ BINARY_EXTENSIONS = {
     '.pyd', '.ko', '.class', '.jar', '.war', '.ear', '.iso', '.img', '.vhd', '.vmdk', 
     '.qcow2', '.vdi', '.mui'
 }
+
+# Second token after "password-" / "passwd-" in stems like password-reset.js (UI code, not secrets)
+_PASSWORD_FILENAME_UI_SUFFIXES = frozenset({
+    'reset', 'policy', 'strength', 'recovery', 'hint', 'rules', 'generator', 'meter',
+    'field', 'validation', 'toggle', 'show', 'hide', 'form', 'requirements', 'forgot',
+    'confirm', 'create', 'update', 'verify', 'check', 'test', 'input', 'label', 'wrapper',
+    'component', 'module', 'page', 'router', 'auth', 'oauth', 'bar', 'box', 'container',
+    'flow', 'wizard', 'modal', 'dialog', 'validator', 'criteria', 'score', 'complexity',
+    'expiry', 'history', 'expired', 'lock', 'unlock', 'change',
+})
+
+
+def _filename_stem_tokens(filename_lower: str) -> List[str]:
+    """Split filename stem into segments (underscores, dots, hyphens, slashes)."""
+    stem, _ = os.path.splitext(filename_lower)
+    return [p for p in re.split(r'[-_.\s/\\]+', stem) if p]
+
+
+def _match_sensitive_keyword_filename(filename_lower: str) -> Optional[str]:
+    """
+    Match sensitive filename keywords as distinct tokens or delimited phrases,
+    not as substrings inside unrelated words (e.g. FXSAPI.DLL must not match 'api').
+    """
+    tokens = _filename_stem_tokens(filename_lower)
+    if not tokens:
+        return None
+
+    # password-reset.js / passwd-policy.css — web UI assets, not credential files
+    if len(tokens) >= 2 and tokens[0] in ('password', 'passwd'):
+        if tokens[1] in _PASSWORD_FILENAME_UI_SUFFIXES:
+            return None
+
+    for t in tokens:
+        if t.startswith('password') or t.startswith('passwd') or t in ('parola', 'sifre'):
+            return 'Password File'
+
+    for t in tokens:
+        if t in ('secret', 'secrets'):
+            return 'Secret File'
+        if t.startswith('secret_') or t.endswith('_secret') or t.endswith('_secrets') or t.startswith('secrets_'):
+            return 'Secret File'
+
+    for t in tokens:
+        if t in ('cred', 'credential', 'credentials'):
+            return 'Credential File'
+        if t.startswith('cred_') or t.endswith('_cred'):
+            return 'Credential File'
+        if t.startswith('credential') or t.endswith('credential') or t.endswith('credentials'):
+            return 'Credential File'
+
+    for t in tokens:
+        if t in ('hash', 'hashes'):
+            return 'Hash File'
+        if t.startswith('hash_') or t.endswith('_hash') or t.endswith('_hashes'):
+            return 'Hash File'
+
+    # API before generic "key" token (e.g. my_api_key.txt is API, not Key)
+    if re.search(r'(?i)(^|[-_.])(api[_-]?key|apikey|apikeys)([-_.]|$)', filename_lower):
+        return 'API File'
+    for t in tokens:
+        if t in ('api', 'apikey', 'apikeys'):
+            return 'API File'
+        if t.startswith('api_') or t.endswith('_api'):
+            return 'API File'
+        if t.startswith('api-') or t.endswith('-api'):
+            return 'API File'
+
+    for t in tokens:
+        if t in ('key', 'keys'):
+            return 'Key File'
+        if t.startswith('key_') or t.endswith('_key') or t.endswith('_keys'):
+            return 'Key File'
+    if re.search(r'(?i)(^|[-_.])(id_rsa|privatekey|sshkey|authorized_keys)([-_.]|$)', filename_lower):
+        return 'Key File'
+
+    for t in tokens:
+        if t in ('token', 'tokens'):
+            return 'Token File'
+        if t.startswith('token_') or t.endswith('_token'):
+            return 'Token File'
+
+    for t in tokens:
+        if t.startswith('nessus'):
+            return 'Nessus Scan File'
+
+    return None
+
 
 def check_share_permissions(
     conn: Any,
@@ -450,6 +533,11 @@ def _sanitize_path(file_path: Optional[str]) -> Optional[str]:
     
     return normalized_path
 
+def _safe_ip_dirname(ip: str) -> str:
+    """Filesystem-safe segment for a host IP (IPv4 or IPv6)."""
+    return re.sub(r'[^\w\-.]', '_', ip.replace(':', '_'))
+
+
 def _get_safe_output_path(normalized_path: str, ip: str) -> Tuple[str, str]:
     """
     Get safe output path for downloaded file.
@@ -461,13 +549,14 @@ def _get_safe_output_path(normalized_path: str, ip: str) -> Tuple[str, str]:
     Returns:
         Tuple of (absolute_output_path, relative_output_path)
     """
-    out_dir = os.path.join('out_download', ip.replace('.', '_'))
+    base = context.output_dir
+    safe_ip = _safe_ip_dirname(ip)
+    out_dir = os.path.join(base, 'out_download', safe_ip)
     os.makedirs(out_dir, exist_ok=True)
     
     safe_filename = re.sub(r'[^\w\-_\.]', '_', normalized_path.replace('/', '_').replace('\\', '_'))
     out_path = os.path.join(out_dir, safe_filename)
-    # Relative path is used for display/download links, keep it simple
-    relative_path = os.path.join(ip.replace('.', '_'), safe_filename)
+    relative_path = os.path.join(safe_ip, safe_filename)
     
     return out_path, relative_path
 
@@ -656,7 +745,9 @@ def scan_share(
                     verbose_print(f"[*] Skipping {file.filename} (pattern mismatch)")
                     continue
             
-            # Apply extension filters (skip directories)
+            # Apply extension filters (skip directories).
+            # Default: all extensions are scanned; use --include-ext / --exclude-ext to narrow.
+            # .txt is only skipped if explicitly excluded or not listed when --include-ext is set.
             if not file.isDirectory:
                 if filters.get('include_ext'):
                     if file_extension.lstrip('.') not in filters['include_ext']:
@@ -688,27 +779,14 @@ def scan_share(
             elif file_extension in SENSITIVE_EXTENSIONS:
                 is_sensitive = True
                 sensitive_type = SENSITIVE_EXTENSIONS[file_extension]
-            # Check for sensitive keywords in filename (case-insensitive)
+            # Sensitive keywords in filename (token/delimiter-based; skip binary extensions)
             else:
                 filename_lower = file.filename.lower()
-                sensitive_keywords = {
-                    'password': 'Password File',
-                    'parola': 'Password File',
-                    'secret': 'Secret File',
-                    'sifre': 'Password File',
-                    'credential': 'Credential File',
-                    'hash': 'Hash File',
-                    'key': 'Key File',
-                    'token': 'Token File',
-                    'api': 'API File',
-                    'cred': 'Credential File',
-                    'nessus': 'Nessus Scan File'
-                }
-                for keyword, desc in sensitive_keywords.items():
-                    if keyword in filename_lower:
+                if file_extension not in BINARY_EXTENSIONS:
+                    hit = _match_sensitive_keyword_filename(filename_lower)
+                    if hit:
                         is_sensitive = True
-                        sensitive_type = desc
-                        break
+                        sensitive_type = hit
             
             # Check if content reading should be skipped due to size
             skip_content_read = False
@@ -774,10 +852,15 @@ def scan_share(
                     ftype = get_file_type(content)
                     file_info['file_type'] = ftype
                     
-                    if not is_sensitive and any(x in ftype for x in ['application/x-executable', 'octet-stream']):
-                        continue
-                        
-                    matches = check_sensitive_patterns(content, ftype, ip)
+                    if not is_sensitive:
+                        if 'application/x-executable' in ftype:
+                            continue
+                        # Magic often labels .txt as octet-stream; still scan text-like extensions
+                        if 'octet-stream' in ftype.lower():
+                            if file_extension.lower() not in TEXT_EXTENSIONS_FOR_CONTENT_SCAN:
+                                continue
+
+                    matches = check_sensitive_patterns(content, ftype, ip, filename=file.filename)
                     if matches:
                         full_path = f"\\\\{ip}\\{share_name}\\{display_file_path}"
                         print_section(f"Sensitive Content Detected")

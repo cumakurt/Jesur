@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jesur"
+version = "2.1.0"
+description = "SMB share discovery and sensitive content analysis for authorized penetration testing"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "See repository" }
+dependencies = [
+    "pysmb==1.2.10",
+    "jinja2==3.1.3",
+    "python-docx==0.8.11",
+    "openpyxl==3.1.2",
+    "pdfplumber==0.10.3",
+    "python-magic==0.4.27",
+    "requests==2.31.0",
+]
+
+[project.scripts]
+jesur = "jesur.main:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "mypy>=1.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["jesur*"]
+
+[tool.setuptools.package-data]
+jesur = ["data/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

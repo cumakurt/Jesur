@@ -1,12 +1,3 @@
-"""
-JESUR - Enhanced SMB Share Scanner
-Export module - JSON and CSV export functionality
-
-Developer: cumakurt
-GitHub: https://github.com/cumakurt/Jesur
-LinkedIn: https://www.linkedin.com/in/cuma-kurt-34414917/
-Version: 2.0.0
-"""
 import json
 import csv
 import os
@@ -84,21 +75,17 @@ def get_export_filenames(base_name, format_type):
     """Generate export filenames with timestamp."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
-    # Create reports directory if it doesn't exist
-    reports_dir = 'reports'
-    os.makedirs(reports_dir, exist_ok=True)
-    
     if format_type == 'json':
         return {
-            'files': os.path.join(reports_dir, f"{base_name}_files_{timestamp}.json"),
-            'sensitive': os.path.join(reports_dir, f"{base_name}_sensitive_{timestamp}.json"),
-            'stats': os.path.join(reports_dir, f"{base_name}_stats_{timestamp}.json")
+            'files': f"{base_name}_files_{timestamp}.json",
+            'sensitive': f"{base_name}_sensitive_{timestamp}.json",
+            'stats': f"{base_name}_stats_{timestamp}.json"
         }
     elif format_type == 'csv':
         return {
-            'files': os.path.join(reports_dir, f"{base_name}_files_{timestamp}.csv"),
-            'sensitive': os.path.join(reports_dir, f"{base_name}_sensitive_{timestamp}.csv"),
-            'stats': os.path.join(reports_dir, f"{base_name}_stats_{timestamp}.json")  # Stats always JSON
+            'files': f"{base_name}_files_{timestamp}.csv",
+            'sensitive': f"{base_name}_sensitive_{timestamp}.csv",
+            'stats': f"{base_name}_stats_{timestamp}.json"  # Stats always JSON
         }
     else:
         return None

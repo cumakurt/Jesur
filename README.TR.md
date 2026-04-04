@@ -1,10 +1,13 @@
 # JESUR - Gelişmiş SMB Paylaşım Tarayıcısı
 
+<<<<<<< HEAD
 **Versiyon**: 2.0.0  
 **Geliştirici**: Cuma KURT  
 **GitHub**: https://github.com/cumakurt/Jesur  
 **LinkedIn**: https://www.linkedin.com/in/cuma-kurt-34414917/
 
+=======
+>>>>>>> 14e38d1 (change report format)
 **Sızma Testi Uzmanları İçin Profesyonel SMB Tarama ve Analiz Aracı**
 
 JESUR, ağlar üzerindeki SMB paylaşımlarını taramak, erişim izinlerini analiz etmek, hassas dosyaları tespit etmek ve detaylı raporlar oluşturmak için tasarlanmış kapsamlı bir Python uygulamasıdır. Sızma testi uzmanları ve güvenlik profesyonelleri için geliştirilmiştir.
@@ -56,9 +59,9 @@ JESUR, ağlar üzerindeki SMB paylaşımlarını taramak, erişim izinlerini ana
 > 📖 **Detaylı kurulum talimatları için**, [INSTALL.TR.md](INSTALL.TR.md) dosyasına bakın - Docker, Python sanal ortamları, sistem geneli kurulum ve sorun giderme konularını kapsayan kapsamlı rehber.
 
 ### Gereksinimler
-- Python 3.7 veya üzeri (Docker kullanıyorsanız Python 3.12)
+- Python 3.7 veya üzeri
 - Hedef SMB paylaşımlarına ağ erişimi
-- Docker (opsiyonel, konteynerli kurulum için - önerilir)
+- Docker (opsiyonel, konteynerli kurulum için)
 
 ### Seçenek 1: Docker Kurulumu (Önerilen)
 

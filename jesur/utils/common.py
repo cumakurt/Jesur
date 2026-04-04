@@ -1,12 +1,3 @@
-"""
-JESUR - Enhanced SMB Share Scanner
-Common utilities module - Colors, formatting, and helper functions
-
-Developer: cumakurt
-GitHub: https://github.com/cumakurt/Jesur
-LinkedIn: https://www.linkedin.com/in/cuma-kurt-34414917/
-Version: 2.0.0
-"""
 from typing import Optional
 
 class Colors:

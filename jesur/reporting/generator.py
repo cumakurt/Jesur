@@ -1,108 +1,148 @@
-"""
-JESUR - Enhanced SMB Share Scanner
-Report generator module - HTML report generation
-
-Developer: cumakurt
-GitHub: https://github.com/cumakurt/Jesur
-LinkedIn: https://www.linkedin.com/in/cuma-kurt-34414917/
-Version: 2.0.0
-"""
 import os
+import shutil
 import jinja2
 from datetime import datetime
 from collections import Counter, defaultdict
+from typing import Any, Dict, List, Optional, Tuple
+
 from jesur.utils.common import normalize_smb_path
 
-def save_results(all_files, sensitive_results, base_filename, scan_args, stats=None):
+
+def _resolve_logo_source_path() -> Optional[str]:
+    """
+    Prefer repo-root jesur_logo.png (next to the jesur package), then packaged data asset.
+    """
+    reporting_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.normpath(os.path.join(reporting_dir, "..", "..", "jesur_logo.png")),
+        os.path.normpath(os.path.join(reporting_dir, "..", "data", "jesur_logo.png")),
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+def _human_bytes(n: Any) -> str:
+    if n is None or n == 0:
+        return "0 B"
+    try:
+        n = float(n)
+    except (TypeError, ValueError):
+        return "—"
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024.0:
+            return f"{n:.1f} {unit}" if unit != "B" else f"{int(n)} B"
+        n /= 1024.0
+    return f"{n:.1f} PB"
+
+
+def save_results(
+    all_files: List[Dict[str, Any]],
+    sensitive_results: List[Dict[str, Any]],
+    base_filename: str,
+    scan_args: Any,
+    stats: Optional[Dict[str, Any]] = None,
+    reports_dir: str = ".",
+    download_href_prefix: str = "out_download/",
+) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Write a single unified HTML report (Material / Google-style dashboard).
+
+    Returns (report_path, None) for backward compatibility with callers expecting a tuple.
+    """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     formatted_timestamp = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
-    
-    # Locate template
-    template_dir = os.path.join(os.path.dirname(__file__), '..', 'data', 'templates')
-    template_file = 'report.html'
-    
+
+    template_dir = os.path.join(os.path.dirname(__file__), "..", "data", "templates")
+    template_file = "report.html"
+
     if not os.path.exists(os.path.join(template_dir, template_file)):
         from jesur.utils.logger import log_error
         log_error(f"Template file not found: {os.path.join(template_dir, template_file)}")
         return None, None
 
-    env = jinja2.Environment(loader=jinja2.FileSystemLoader(template_dir))
-    template = env.get_template(template_file)
-    
-    stats = stats or {}
-    
-    # Create reports directory if it doesn't exist
-    reports_dir = 'reports'
     os.makedirs(reports_dir, exist_ok=True)
-    
-    # --- FILES REPORT ---
-    files_report = os.path.join(reports_dir, f"{base_filename}_files_{timestamp}.html")
-    
-    files_by_ip = defaultdict(list)
+
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(template_dir),
+        autoescape=jinja2.select_autoescape(["html", "xml"]),
+    )
+    template = env.get_template(template_file)
+
+    stats = stats or {}
+
+    files_by_ip: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for file_info in all_files:
-        ip = file_info.get('ip', 'unknown')
-        file_info['path'] = normalize_smb_path(file_info.get('path', ''))
+        ip = file_info.get("ip", "unknown")
+        file_info["path"] = normalize_smb_path(file_info.get("path", ""))
         files_by_ip[ip].append(file_info)
-    
-    # --- SENSITIVE REPORT ---
-    sensitive_report = os.path.join(reports_dir, f"{base_filename}_sensitive_{timestamp}.html")
-    
-    results_by_ip = defaultdict(lambda: defaultdict(list))
-    category_counts = Counter()
+
+    results_by_ip: Dict[str, Dict[str, List[Dict[str, Any]]]] = defaultdict(lambda: defaultdict(list))
+    category_counts: Counter = Counter()
     for result in sensitive_results:
-        ip = result.get('ip', 'unknown')
-        share = result.get('share', 'unknown')
-        result['path'] = normalize_smb_path(result.get('path', ''))
+        ip = result.get("ip", "unknown")
+        share = result.get("share", "unknown")
+        result["path"] = normalize_smb_path(result.get("path", ""))
         results_by_ip[ip][share].append(result)
-        category_counts[result.get('category', 'Unknown')] += 1
-    
-    # Build chart data
+        category_counts[result.get("category", "Unknown")] += 1
+
     files_per_ip = {ip: len(entries) for ip, entries in files_by_ip.items()}
     chart_data = {
-        'categories': list(category_counts.keys()),
-        'category_counts': list(category_counts.values()),
-        'files_ips': list(files_per_ip.keys()),
-        'files_counts': list(files_per_ip.values()),
-        'totals': {
-            'files': len(all_files),
-            'sensitive': len(sensitive_results),
-            'hosts_scanned': stats.get('hosts_scanned', 0),
-            'shares_found': stats.get('shares_found', 0),
-            'readable_shares': stats.get('readable_shares', 0),
-            'writable_shares': stats.get('writable_shares', 0),
-        }
+        "categories": list(category_counts.keys()),
+        "category_counts": list(category_counts.values()),
+        "files_ips": list(files_per_ip.keys()),
+        "files_counts": list(files_per_ip.values()),
+        "totals": {
+            "files": len(all_files),
+            "sensitive": len(sensitive_results),
+            "hosts_scanned": stats.get("hosts_scanned", 0),
+            "shares_found": stats.get("shares_found", 0),
+            "readable_shares": stats.get("readable_shares", 0),
+            "writable_shares": stats.get("writable_shares", 0),
+        },
     }
-    
-    files_html = template.render(
-        title="Jesur - Accessed Files Report",
+
+    duration_s = 0.0
+    if stats.get("start_time") and stats.get("end_time"):
+        try:
+            duration_s = float(stats["end_time"]) - float(stats["start_time"])
+        except (TypeError, ValueError):
+            duration_s = 0.0
+
+    stats_display = {
+        "bytes_read_human": _human_bytes(stats.get("bytes_read", 0)),
+        "duration_human": f"{duration_s:.1f}s" if duration_s else "—",
+    }
+
+    report_path = os.path.join(reports_dir, f"{base_filename}_report_{timestamp}.html")
+    report_dir = os.path.dirname(os.path.abspath(report_path))
+
+    logo_href: Optional[str] = None
+    logo_src = _resolve_logo_source_path()
+    if logo_src:
+        try:
+            shutil.copy2(logo_src, os.path.join(report_dir, "jesur_logo.png"))
+            logo_href = "jesur_logo.png"
+        except OSError:
+            logo_href = None
+
+    html = template.render(
+        title="JESUR — Scan Report",
         timestamp=formatted_timestamp,
-        network=scan_args.network if hasattr(scan_args, 'network') else 'N/A',
+        network=scan_args.network if hasattr(scan_args, "network") else "N/A",
         username=scan_args.username,
         domain=scan_args.domain,
-        content_type='files',
         files=files_by_ip,
         results=results_by_ip,
         stats=stats,
-        chart_data=chart_data
+        stats_display=stats_display,
+        chart_data=chart_data,
+        download_href_prefix=download_href_prefix,
+        page_size=100,
+        logo_href=logo_href,
     )
-    
-    with open(files_report, 'w', encoding='utf-8') as f:
-        f.write(files_html)
-    
-    sensitive_html = template.render(
-        title="Jesur - Sensitive Content Report",
-        timestamp=formatted_timestamp,
-        network=scan_args.network if hasattr(scan_args, 'network') else 'N/A',
-        username=scan_args.username,
-        domain=scan_args.domain,
-        content_type='sensitive',
-        files=files_by_ip,
-        results=results_by_ip,
-        stats=stats,
-        chart_data=chart_data
-    )
-    
-    with open(sensitive_report, 'w', encoding='utf-8') as f:
-        f.write(sensitive_html)
-    
-    return files_report, sensitive_report
+    with open(report_path, "w", encoding="utf-8") as f:
+        f.write(html)
+
+    return report_path, None

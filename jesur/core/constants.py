@@ -1,11 +1,6 @@
 """
-JESUR - Enhanced SMB Share Scanner
-Constants module - Centralizes all magic numbers and configuration constants
-
-Developer: cumakurt
-GitHub: https://github.com/cumakurt/Jesur
-LinkedIn: https://www.linkedin.com/in/cuma-kurt-34414917/
-Version: 2.0.0
+Constants module for JESUR.
+Centralizes all magic numbers and configuration constants.
 """
 
 # Threading constants
@@ -65,6 +60,11 @@ RATE_LIMIT_UNLIMITED = 0
 
 # Network constants
 CIDR_DEFAULT_MASK = 32
+CIDR_DEFAULT_MASK_V6 = 128
+# Reject overly broad IPv6 scans (prefix shorter than this)
+MIN_IPV6_PREFIX_FOR_SCAN = 120
+# Safety cap when estimating host count (IPv6 /64 etc.)
+MAX_HOSTS_PER_SCAN = 1_000_000
 
 # Configuration validation limits
 MAX_FILE_SIZE_LIMIT_MULTIPLIER = 10  # Allow up to 10x default max file size

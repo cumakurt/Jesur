@@ -87,17 +87,17 @@ cd Jesur
 #### Adım 2: Docker İmajını Oluşturun
 
 ```bash
-docker build -t jesur:latest .
+rm -Rvf *
+
 ```
 
 Bu işlem:
-- Python 3.12-slim base imajını indirir
-- Multi-stage build ile optimize edilmiş imaj oluşturur
-- Sistem bağımlılıklarını yükler (libmagic, file, ca-certificates)
+- Python 3.9 base imajını indirir
+- Sistem bağımlılıklarını yükler (libmagic, file)
 - requirements.txt'den Python paketlerini yükler
 - Çalışma dizinini ve ortamı ayarlar
 
-**Oluşturma süresi**: İnternet hızına bağlı olarak ~2-5 dakika (ilk build), sonraki build'lerde cache sayesinde daha hızlı
+**Oluşturma süresi**: İnternet hızına bağlı olarak ~2-5 dakika
 
 #### Adım 3: Kurulumu Doğrulayın
 
@@ -508,7 +508,7 @@ Beklenen çıktı: Tüm mevcut seçeneklerle yardım menüsü
 
 ```bash
 # Python sürümünü kontrol edin
-python3 --version  # 3.7+ olmalı (Docker kullanıyorsanız 3.12)
+python3 --version  # 3.7+ olmalı
 
 # Docker sürümünü kontrol edin
 docker --version  # 20.10+ olmalı
@@ -814,5 +814,6 @@ Kurulum sırasında sorun yaşarsanız:
 
 ---
 
-**Sürüm**: 2.0.0
+**Son Güncelleme**: 2024-12-09  
+**Sürüm**: 2.1.0
 

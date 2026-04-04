@@ -1,10 +1,13 @@
 # JESUR - Enhanced SMB Share Scanner
 
+<<<<<<< HEAD
 **Version**: 2.0.0  
 **Developer**: Cuma KURT  
 **GitHub**: https://github.com/cumakurt/Jesur  
 **LinkedIn**: https://www.linkedin.com/in/cuma-kurt-34414917/
 
+=======
+>>>>>>> 14e38d1 (change report format)
 **Professional Penetration Testing Tool for SMB Share Discovery and Analysis**
 
 JESUR is a comprehensive Python application designed to scan SMB shares across networks, analyze access permissions, detect sensitive files, and generate detailed reports. Built for penetration testers and security professionals.
@@ -56,9 +59,9 @@ JESUR is a comprehensive Python application designed to scan SMB shares across n
 > 📖 **For detailed installation instructions**, see [INSTALL.md](INSTALL.md) - Complete guide covering Docker, Python virtual environments, system-wide installation, and troubleshooting.
 
 ### Prerequisites
-- Python 3.7 or higher (Python 3.12 if using Docker)
+- Python 3.7 or higher
 - Network access to target SMB shares
-- Docker (optional, for containerized deployment - recommended)
+- Docker (optional, for containerized deployment)
 
 ### Option 1: Docker Installation (Recommended)
 

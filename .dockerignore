@@ -47,3 +47,8 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Docker files
+Dockerfile
+.dockerignore
+docker-compose.yml
+

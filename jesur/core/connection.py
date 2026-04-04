@@ -1,12 +1,3 @@
-"""
-JESUR - Enhanced SMB Share Scanner
-SMB connection management module
-
-Developer: cumakurt
-GitHub: https://github.com/cumakurt/Jesur
-LinkedIn: https://www.linkedin.com/in/cuma-kurt-34414917/
-Version: 2.0.0
-"""
 import socket
 import threading
 from threading import Lock
@@ -122,9 +113,6 @@ def retry_on_failure(
                         sleep(delay)
                     else:
                         raise
-                except Exception as e:
-                    # Don't retry on non-network errors
-                    raise
             if last_exception:
                 raise last_exception
         return wrapper
