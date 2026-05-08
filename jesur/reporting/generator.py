@@ -107,8 +107,8 @@ def save_results(
         )
         template = env.get_template(template_file)
     else:
-        from jesur.utils.logger import log_warning
-        log_warning(f"Template file not found, using fallback HTML: {template_path}")
+        from jesur.utils.logger import log_debug
+        log_debug(f"Template file not found, using fallback HTML: {template_path}")
 
     stats = stats or {}
 

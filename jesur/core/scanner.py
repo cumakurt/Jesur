@@ -2,6 +2,7 @@ import os
 import threading
 import tempfile
 import re
+import hashlib
 from datetime import datetime
 from time import sleep
 import time
@@ -565,7 +566,7 @@ def _safe_ip_dirname(ip: str) -> str:
     return re.sub(r'[^\w\-.]', '_', ip.replace(':', '_'))
 
 
-def _get_safe_output_path(normalized_path: str, ip: str) -> Tuple[str, str]:
+def _get_safe_output_path(normalized_path: str, share: str, ip: str) -> Tuple[str, str]:
     """
     Get safe output path for downloaded file.
     
@@ -581,7 +582,11 @@ def _get_safe_output_path(normalized_path: str, ip: str) -> Tuple[str, str]:
     out_dir = os.path.join(base, 'out_download', safe_ip)
     os.makedirs(out_dir, exist_ok=True)
     
-    safe_filename = re.sub(r'[^\w\-_\.]', '_', normalized_path.replace('/', '_').replace('\\', '_'))
+    safe_share = re.sub(r'[^\w\-_\.]', '_', (share or '').strip()) or 'share'
+    safe_path_part = re.sub(r'[^\w\-_\.]', '_', normalized_path.replace('/', '_').replace('\\', '_'))
+    unique_key = f"{share}|{normalized_path}".encode("utf-8", errors="ignore")
+    short_hash = hashlib.sha1(unique_key).hexdigest()[:10]
+    safe_filename = f"{safe_share}__{safe_path_part}__{short_hash}"
     out_path = os.path.join(out_dir, safe_filename)
     relative_path = os.path.join(safe_ip, safe_filename)
     
@@ -618,7 +623,7 @@ def download_file_with_fallback(
         return None
     
     # Strategy 2: Get output path
-    out_path, relative_path = _get_safe_output_path(normalized_path, ip)
+    out_path, relative_path = _get_safe_output_path(normalized_path, share, ip)
     
     # Strategy 3: Check if file already exists
     if os.path.exists(out_path):
@@ -944,7 +949,13 @@ def scan_share(
     except Exception as e:
         from jesur.utils.logger import log_debug, log_error
         compact_msg = _compact_exception_message(e)
-        if type(e).__name__ == "OperationFailure" and "Unable to open directory" in str(e):
+        transient_scan_errors = {"NotConnectedError", "SMBTimeout"}
+        if type(e).__name__ in transient_scan_errors:
+            log_debug(f"Transient scan error on share {share_name}: {compact_msg}")
+        elif type(e).__name__ == "AttributeError" and "NoneType" in str(e) and "recv" in str(e):
+            # Connection dropped mid-read in pysmb internals; treat as transient transport issue.
+            log_debug(f"Transient socket state on share {share_name}: {compact_msg}")
+        elif type(e).__name__ == "OperationFailure" and "Unable to open directory" in str(e):
             # Common permission-denied case on protected SMB directories (e.g. SYSVOL\\DfsrPrivate).
             log_debug(f"Skipping inaccessible directory on share {share_name}: {compact_msg}")
         else:
@@ -1093,8 +1104,13 @@ def scan_host(
         from jesur.utils.logger import log_debug
         log_debug(f"Network error scanning {ip}: {_compact_exception_message(e)}")
     except Exception as e:
-        from jesur.utils.logger import log_error
-        log_error(f"Unexpected error scanning {ip}: {_compact_exception_message(e)}")
+        from jesur.utils.logger import log_debug, log_error
+        compact_msg = _compact_exception_message(e)
+        if type(e).__name__ == "OperationFailure" and "Unable to locate Server Service RPC endpoint" in str(e):
+            # Some hosts expose SMB transport but not server service endpoint for share enumeration.
+            log_debug(f"Share enumeration endpoint unavailable on {ip}: {compact_msg}")
+        else:
+            log_error(f"Unexpected error scanning {ip}: {compact_msg}")
     
     # Return stats, results, and files
     return {
