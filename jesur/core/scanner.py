@@ -996,7 +996,12 @@ def scan_host(
         if conn:
             try:
                 scan_status.update(action="Listing shares...")
-                if shutdown_flag.is_set(): return local_stats
+                if shutdown_flag.is_set():
+                    return {
+                        'stats': local_stats,
+                        'results': local_results,
+                        'files': local_files
+                    }
                 
                 shares = cache_manager.get_cached_share(ip, "shares")
                 if not shares:

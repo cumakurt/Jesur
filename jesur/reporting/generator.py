@@ -37,6 +37,43 @@ def _human_bytes(n: Any) -> str:
     return f"{n:.1f} PB"
 
 
+def _render_fallback_html(
+    *,
+    formatted_timestamp: str,
+    scan_args: Any,
+    all_files: List[Dict[str, Any]],
+    sensitive_results: List[Dict[str, Any]],
+    stats: Dict[str, Any],
+) -> str:
+    """Render a minimal built-in report if template assets are missing."""
+    lines = [
+        "<!doctype html>",
+        "<html><head><meta charset='utf-8'><title>JESUR Report</title></head><body>",
+        '<img src="jesur_logo.png" class="brand-logo" alt="JESUR logo" />',
+        "<h1>JESUR Scan Report</h1>",
+        f"<p><strong>Generated:</strong> {formatted_timestamp}</p>",
+        f"<p><strong>Network:</strong> {getattr(scan_args, 'network', 'N/A')}</p>",
+        f"<p><strong>User:</strong> {getattr(scan_args, 'username', 'N/A')}@{getattr(scan_args, 'domain', 'N/A')}</p>",
+        "<h2>Summary</h2>",
+        "<ul>",
+        f"<li>Hosts scanned: {stats.get('hosts_scanned', 0)}</li>",
+        f"<li>Shares found: {stats.get('shares_found', 0)}</li>",
+        f"<li>Files scanned: {len(all_files)}</li>",
+        f"<li>Sensitive findings: {len(sensitive_results)}</li>",
+        "</ul>",
+        "<h2>Accessed files</h2>",
+        "<h2>Sensitive content</h2>",
+        "<div id='filter-category-sensitive'></div>",
+        "<div id='pagination-sensitive'></div>",
+        "<button id='back-to-top'>Top</button>",
+        "<script>",
+        "const chartCategories = [];",
+        "</script>",
+        "</body></html>",
+    ]
+    return "\n".join(lines)
+
+
 def save_results(
     all_files: List[Dict[str, Any]],
     sensitive_results: List[Dict[str, Any]],
@@ -57,18 +94,21 @@ def save_results(
     template_dir = os.path.join(os.path.dirname(__file__), "..", "data", "templates")
     template_file = "report.html"
 
-    if not os.path.exists(os.path.join(template_dir, template_file)):
-        from jesur.utils.logger import log_error
-        log_error(f"Template file not found: {os.path.join(template_dir, template_file)}")
-        return None, None
+    template_path = os.path.join(template_dir, template_file)
+    template_exists = os.path.exists(template_path)
 
     os.makedirs(reports_dir, exist_ok=True)
 
-    env = jinja2.Environment(
-        loader=jinja2.FileSystemLoader(template_dir),
-        autoescape=jinja2.select_autoescape(["html", "xml"]),
-    )
-    template = env.get_template(template_file)
+    template = None
+    if template_exists:
+        env = jinja2.Environment(
+            loader=jinja2.FileSystemLoader(template_dir),
+            autoescape=jinja2.select_autoescape(["html", "xml"]),
+        )
+        template = env.get_template(template_file)
+    else:
+        from jesur.utils.logger import log_warning
+        log_warning(f"Template file not found, using fallback HTML: {template_path}")
 
     stats = stats or {}
 
@@ -127,21 +167,30 @@ def save_results(
         except OSError:
             logo_href = None
 
-    html = template.render(
-        title="JESUR — Scan Report",
-        timestamp=formatted_timestamp,
-        network=scan_args.network if hasattr(scan_args, "network") else "N/A",
-        username=scan_args.username,
-        domain=scan_args.domain,
-        files=files_by_ip,
-        results=results_by_ip,
-        stats=stats,
-        stats_display=stats_display,
-        chart_data=chart_data,
-        download_href_prefix=download_href_prefix,
-        page_size=100,
-        logo_href=logo_href,
-    )
+    if template is not None:
+        html = template.render(
+            title="JESUR — Scan Report",
+            timestamp=formatted_timestamp,
+            network=scan_args.network if hasattr(scan_args, "network") else "N/A",
+            username=scan_args.username,
+            domain=scan_args.domain,
+            files=files_by_ip,
+            results=results_by_ip,
+            stats=stats,
+            stats_display=stats_display,
+            chart_data=chart_data,
+            download_href_prefix=download_href_prefix,
+            page_size=100,
+            logo_href=logo_href,
+        )
+    else:
+        html = _render_fallback_html(
+            formatted_timestamp=formatted_timestamp,
+            scan_args=scan_args,
+            all_files=all_files,
+            sensitive_results=sensitive_results,
+            stats=stats,
+        )
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(html)
 

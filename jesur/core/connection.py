@@ -1,4 +1,5 @@
 import socket
+import ipaddress
 import threading
 from threading import Lock
 from time import sleep
@@ -131,11 +132,19 @@ def check_port(ip: str, port: int, timeout: float = 1.0) -> bool:
     Returns:
         True if port is open, False otherwise
     """
+    sock = None
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        family = socket.AF_INET
+        try:
+            parsed_ip = ipaddress.ip_address(ip)
+            family = socket.AF_INET6 if isinstance(parsed_ip, ipaddress.IPv6Address) else socket.AF_INET
+        except ValueError:
+            # Keep IPv4 as safe default for invalid IP strings.
+            pass
+
+        sock = socket.socket(family, socket.SOCK_STREAM)
         sock.settimeout(timeout)
         result = sock.connect_ex((ip, port))
-        sock.close()
         return result == 0
     except (socket.timeout, ConnectionError, OSError):
         return False
@@ -143,6 +152,12 @@ def check_port(ip: str, port: int, timeout: float = 1.0) -> bool:
         from jesur.utils.logger import log_debug
         log_debug(f"Unexpected error checking port {port} on {ip}: {e}")
         return False
+    finally:
+        if sock is not None:
+            try:
+                sock.close()
+            except OSError:
+                pass
 
 class SMBConnectionPool:
     """Thread-safe connection pool for SMB connections with automatic cleanup."""

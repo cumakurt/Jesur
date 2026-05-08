@@ -42,6 +42,19 @@ def str_to_bool(val):
     return str(val).lower() in ['1', 'true', 'yes', 'y', 'on']
 
 
+def safe_output_name(name: str) -> str:
+    """
+    Sanitize output base name to a safe filename segment.
+    Allows only letters, digits, dot, underscore and dash.
+    """
+    if not isinstance(name, str):
+        return "jesur"
+    cleaned = os.path.basename(name.strip())
+    cleaned = re.sub(r'[^A-Za-z0-9._-]+', '_', cleaned)
+    cleaned = cleaned.strip('._-')
+    return cleaned or "jesur"
+
+
 def load_config(config_path: str) -> Dict[str, Any]:
     """
     Load configuration from INI file.
@@ -64,6 +77,15 @@ def load_config(config_path: str) -> Dict[str, Any]:
         if isinstance(value, str) and value.strip() == '':
             return None
         return value
+
+    def safe_getint(section, key: str, fallback=None):
+        raw = section.get(key, fallback=None)
+        if raw is None:
+            return fallback
+        try:
+            return int(str(raw).strip())
+        except (TypeError, ValueError):
+            raise ValueError(f"Invalid integer value for '{key}': {raw}")
     scan = cfg['scan'] if 'scan' in cfg else {}
     auth = cfg['auth'] if 'auth' in cfg else {}
     filters = cfg['filters'] if 'filters' in cfg else {}
@@ -76,11 +98,11 @@ def load_config(config_path: str) -> Dict[str, Any]:
     conf['geo_list'] = str_to_bool(scan.get('geo_list', False))
     conf['share'] = optional(scan.get('share'))
     conf['list_shares'] = str_to_bool(scan.get('list_shares', False))
-    conf['threads'] = scan.getint('threads', fallback=None)
+    conf['threads'] = safe_getint(scan, 'threads', fallback=None)
     from jesur.core.constants import RATE_LIMIT_UNLIMITED
-    conf['rate_limit'] = scan.getint('rate_limit', fallback=RATE_LIMIT_UNLIMITED)
+    conf['rate_limit'] = safe_getint(scan, 'rate_limit', fallback=RATE_LIMIT_UNLIMITED)
     from jesur.core.constants import TIMEOUT_HOST_DEFAULT
-    conf['host_timeout'] = scan.getint('host_timeout', fallback=TIMEOUT_HOST_DEFAULT)
+    conf['host_timeout'] = safe_getint(scan, 'host_timeout', fallback=TIMEOUT_HOST_DEFAULT)
 
     # Auth section
     conf['username'] = optional(auth.get('username', 'guest')) or 'guest'
@@ -92,10 +114,10 @@ def load_config(config_path: str) -> Dict[str, Any]:
     # Filters section
     conf['include_ext'] = optional(filters.get('include_ext'))
     conf['exclude_ext'] = optional(filters.get('exclude_ext'))
-    conf['min_size'] = filters.getint('min_size', fallback=0)
+    conf['min_size'] = safe_getint(filters, 'min_size', fallback=0)
     from jesur.core.constants import MAX_FILE_SIZE_DEFAULT, MAX_READ_BYTES_DEFAULT
-    conf['max_size'] = filters.getint('max_size', fallback=MAX_FILE_SIZE_DEFAULT)
-    conf['max_read_bytes'] = filters.getint('max_read_bytes', fallback=MAX_READ_BYTES_DEFAULT)
+    conf['max_size'] = safe_getint(filters, 'max_size', fallback=MAX_FILE_SIZE_DEFAULT)
+    conf['max_read_bytes'] = safe_getint(filters, 'max_read_bytes', fallback=MAX_READ_BYTES_DEFAULT)
     conf['filename_pattern'] = optional(filters.get('filename_pattern'))
     conf['exclude_shares'] = optional(filters.get('exclude_shares'))
     conf['include_admin_shares'] = str_to_bool(filters.get('include_admin_shares', False))
@@ -104,7 +126,7 @@ def load_config(config_path: str) -> Dict[str, Any]:
     # Output section
     conf['output_json'] = str_to_bool(output.get('output_json', False))
     conf['output_csv'] = str_to_bool(output.get('output_csv', False))
-    conf['output_name'] = output.get('output_name', 'jesur')
+    conf['output_name'] = safe_output_name(output.get('output_name', 'jesur'))
     conf['quiet'] = str_to_bool(output.get('quiet', False))
     conf['verbose'] = str_to_bool(output.get('verbose', False))
     conf['no_stats'] = str_to_bool(output.get('no_stats', False))
@@ -211,6 +233,8 @@ def validate_config(config: Dict[str, Any]) -> bool:
     
     if config.get('output_dir') is not None and not isinstance(config['output_dir'], str):
         errors.append(f"output_dir must be a string, got: {type(config['output_dir']).__name__}")
+    if config.get('output_name') is not None and not isinstance(config['output_name'], str):
+        errors.append(f"output_name must be a string, got: {type(config['output_name']).__name__}")
 
     if config.get('password_file'):
         pf = config['password_file']
@@ -434,6 +458,7 @@ Examples:
 
     parser.set_defaults(**config_values)
     args = parser.parse_args(remaining_argv)
+    args.output_name = safe_output_name(args.output_name)
 
     # Fill positional network from config if missing
     if not any([args.network, args.file, args.geo, args.geo_list]):
