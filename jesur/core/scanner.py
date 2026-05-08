@@ -229,6 +229,10 @@ BINARY_EXTENSIONS = {
 # Shares that must never be scanned regardless of CLI/config.
 ALWAYS_EXCLUDED_SHARES = {"IPC$", "PRINT$"}
 
+# Common system/cache files that should not be treated as sensitive
+# solely because of generic extensions such as ".db".
+KNOWN_BENIGN_FILENAMES = {"thumbs.db"}
+
 # Second token after "password-" / "passwd-" in stems like password-reset.js (UI code, not secrets)
 _PASSWORD_FILENAME_UI_SUFFIXES = frozenset({
     'reset', 'policy', 'strength', 'recovery', 'hint', 'rules', 'generator', 'meter',
@@ -259,6 +263,11 @@ def _filename_stem_tokens(filename_lower: str) -> List[str]:
     """Split filename stem into segments (underscores, dots, hyphens, slashes)."""
     stem, _ = os.path.splitext(filename_lower)
     return [p for p in re.split(r'[-_.\s/\\]+', stem) if p]
+
+
+def _is_known_benign_filename(filename_lower: str) -> bool:
+    """Return True for known non-sensitive system/cache filenames."""
+    return filename_lower in KNOWN_BENIGN_FILENAMES
 
 
 def _match_sensitive_keyword_filename(filename_lower: str) -> Optional[str]:
@@ -755,6 +764,7 @@ def scan_share(
                 smb_file_path = f"{smb_path}/{file.filename}"
             
             display_file_path = normalize_smb_path(smb_file_path.replace('/', '\\'))
+            filename_lower = file.filename.lower()
             file_extension = os.path.splitext(file.filename)[1].lower()
             
             # Apply filename pattern filter
@@ -794,12 +804,11 @@ def scan_share(
                 is_sensitive = True
                 sensitive_type = SENSITIVE_FILENAMES[file.filename]
             # Check extension match
-            elif file_extension in SENSITIVE_EXTENSIONS:
+            elif file_extension in SENSITIVE_EXTENSIONS and not _is_known_benign_filename(filename_lower):
                 is_sensitive = True
                 sensitive_type = SENSITIVE_EXTENSIONS[file_extension]
             # Sensitive keywords in filename (token/delimiter-based; skip binary extensions)
             else:
-                filename_lower = file.filename.lower()
                 if file_extension not in BINARY_EXTENSIONS:
                     hit = _match_sensitive_keyword_filename(filename_lower)
                     if hit:

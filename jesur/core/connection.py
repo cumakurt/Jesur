@@ -345,8 +345,9 @@ class SMBConnectionPool:
             # Log other errors
             from jesur.core import context
             from jesur.utils.logger import log_debug, log_error
-            if type(e).__name__ == "NotConnectedError":
-                # Common transient state in pysmb; keep it out of error stream.
+            transient_connection_errors = {"NotConnectedError", "SMBTimeout"}
+            if type(e).__name__ in transient_connection_errors:
+                # Common transient states in pysmb; keep them out of error stream.
                 log_debug(f"Connection not ready for {ip}: {_compact_exception_message(e)}")
             elif hasattr(context, 'verbose_mode') and context.verbose_mode:
                 log_debug(f"Unexpected connection error for {ip}: {_compact_exception_message(e)}")

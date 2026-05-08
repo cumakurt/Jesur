@@ -1,7 +1,7 @@
 """Tests for filename sensitive-keyword matching (reduces false positives)."""
 import pytest
 
-from jesur.core.scanner import _match_sensitive_keyword_filename
+from jesur.core.scanner import _match_sensitive_keyword_filename, _is_known_benign_filename
 
 
 @pytest.mark.parametrize(
@@ -31,3 +31,8 @@ from jesur.core.scanner import _match_sensitive_keyword_filename
 )
 def test_keyword_filename_matches(name, expected):
     assert _match_sensitive_keyword_filename(name.lower()) == expected
+
+
+def test_known_benign_filename_excludes_thumbs_db():
+    assert _is_known_benign_filename("thumbs.db") is True
+    assert _is_known_benign_filename("users.db") is False
