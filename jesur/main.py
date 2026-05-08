@@ -5,7 +5,7 @@ Main application module
 Developer: Cuma Kurt
 GitHub: https://github.com/cumakurt/Jesur
 LinkedIn: https://www.linkedin.com/in/cuma-kurt-34414917/
-Version: 2.0.0
+Version: 2.1.0
 """
 import sys
 import os
@@ -18,7 +18,7 @@ import re
 import logging
 import configparser
 from typing import Any, Dict, Optional, Set, Union
-from concurrent.futures import ThreadPoolExecutor, wait
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
 # Suppress pysmb debug messages
 logging.getLogger('SMB').setLevel(logging.ERROR)
@@ -272,7 +272,9 @@ def _parse_network_token(line: str) -> Union[ipaddress.IPv4Network, ipaddress.IP
 
 def _estimate_host_count(net: Union[ipaddress.IPv4Network, ipaddress.IPv6Network]) -> int:
     if isinstance(net, ipaddress.IPv4Network):
-        return max(1, net.num_addresses - 2)
+        if net.prefixlen >= 31:
+            return int(net.num_addresses)
+        return max(0, int(net.num_addresses) - 2)
     return max(1, int(net.num_addresses))
 
 
@@ -382,16 +384,17 @@ def print_statistics(stats_dict: Dict[str, Any]) -> None:
 def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
+    context.reset_runtime_state()
+    global _shutdown_count
+    _shutdown_count = 0
 
     initial_parser = argparse.ArgumentParser(add_help=False)
     initial_parser.add_argument('--config', help='Config file path', default=DEFAULT_CONFIG_PATH)
     initial_args, remaining_argv = initial_parser.parse_known_args()
-    config_values = load_config(initial_args.config)
-    
-    # Validate configuration
     try:
+        config_values = load_config(initial_args.config)
         validate_config(config_values)
-    except ValueError as e:
+    except (configparser.Error, ValueError) as e:
         print(f"{Colors.RED}[!] Configuration Error:{Colors.RESET}")
         print(str(e))
         sys.exit(1)
@@ -588,7 +591,7 @@ Examples:
         if not networks:
             print(f"[-] No IP ranges found for {country_code}")
             sys.exit(1)
-        total_hosts = sum(max(1, net.num_addresses - 2) for net in networks)
+        total_hosts = sum(_estimate_host_count(net) for net in networks)
     elif args.file:
         try:
             with open(args.file, 'r') as f:
@@ -659,20 +662,8 @@ Examples:
     # Rate limiting
     last_submit_time = time.time()
     rate_limit_delay = 1.0 / args.rate_limit if args.rate_limit > 0 else 0
-    
-    # Build IP list for scanning
-    ip_list = []
-    for net in networks:
-        for ip in net.hosts():
-            if shutdown_flag.is_set(): 
-                break
-            ip_str = str(ip)
-            if is_ip_excluded(ip_str, excluded_networks):
-                verbose_print(f"[*] Skipping excluded IP: {ip_str}")
-                continue
-            ip_list.append(ip_str)
-
-    total_hosts = len(ip_list)
+    skipped_hosts = 0
+    submitted_hosts = 0
     
     # Import scanner
     from jesur.core.process_scanner import scan_host_with_timeout
@@ -684,7 +675,7 @@ Examples:
     completed_lock = threading.Lock()
     def get_completed():
         with completed_lock:
-            return completed_hosts
+            return completed_hosts + skipped_hosts
     
     from jesur.core.constants import PROGRESS_UPDATE_INTERVAL, PROGRESS_MONITOR_SLEEP
     def progress_monitor():
@@ -697,10 +688,11 @@ Examples:
                 elapsed = current_time - start_time
                 done = get_completed()
                 progress = (done / total_hosts) * 100 if total_hosts > 0 else 0
+                progress = min(progress, 100.0)
                 
                 if done > 0:
                     rate = done / elapsed
-                    remaining = total_hosts - done
+                    remaining = max(total_hosts - done, 0)
                     eta = remaining / rate if rate > 0 else 0
                     eta_str = f"ETA: {format_duration(eta)}"
                 else:
@@ -728,17 +720,23 @@ Examples:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_ip = {}
             future_start = {}
-            for ip in ip_list:
-                if shutdown_flag.is_set():
-                    break
-                
+
+            def iter_target_ips():
+                for net in networks:
+                    for ip in net.hosts():
+                        if shutdown_flag.is_set():
+                            return
+                        yield str(ip)
+
+            def submit_scan(ip: str):
+                nonlocal last_submit_time, submitted_hosts
                 if rate_limit_delay > 0:
                     current_time = time.time()
                     elapsed = current_time - last_submit_time
                     if elapsed < rate_limit_delay:
                         time.sleep(rate_limit_delay - elapsed)
                     last_submit_time = time.time()
-                
+
                 scan_status.update(ip=ip, action="Scanning...")
                 future = executor.submit(
                     scan_host_with_timeout,
@@ -754,26 +752,23 @@ Examples:
                 )
                 future_to_ip[future] = ip
                 future_start[future] = time.time()
-            
-            while future_to_ip and not shutdown_flag.is_set():
-                done, not_done = wait(list(future_to_ip.keys()), timeout=0.5)
-                
-                for future in done:
-                    ip = future_to_ip.pop(future)
-                    future_start.pop(future, None)
-                    try:
-                        scan_result = future.result()
-                    except (ConnectionError, TimeoutError, OSError) as e:
-                        from jesur.utils.logger import log_debug
-                        log_debug(f"Network error scanning {ip}: {e}")
-                        verbose_print(f"[-] Error scanning {ip}: {e}")
-                        continue
-                    except Exception as e:
-                        from jesur.utils.logger import log_error
-                        log_error(f"Unexpected error scanning {ip}: {e}", exc_info=True)
-                        verbose_print(f"[-] Error scanning {ip}: {e}")
-                        continue
-                    
+                submitted_hosts += 1
+
+            def collect_future(future):
+                nonlocal completed_hosts
+                ip = future_to_ip.pop(future)
+                future_start.pop(future, None)
+                try:
+                    scan_result = future.result()
+                except (ConnectionError, TimeoutError, OSError) as e:
+                    from jesur.utils.logger import log_debug
+                    log_debug(f"Network error scanning {ip}: {e}")
+                    verbose_print(f"[-] Error scanning {ip}: {e}")
+                except Exception as e:
+                    from jesur.utils.logger import log_error
+                    log_error(f"Unexpected error scanning {ip}: {e}", exc_info=True)
+                    verbose_print(f"[-] Error scanning {ip}: {e}")
+                else:
                     if scan_result['success']:
                         if scan_result['results']:
                             with context.results_lock:
@@ -781,7 +776,7 @@ Examples:
                         if scan_result['files']:
                             with context.all_files_lock:
                                 all_files.extend(scan_result['files'])
-                        
+
                         if scan_result['stats']:
                             stats = scan_result['stats']
                             scan_stats.increment(
@@ -797,11 +792,45 @@ Examples:
                             )
                     elif scan_result.get('error'):
                         verbose_print(f"[-] Error scanning {ip}: {scan_result['error']}")
-
+                finally:
                     with completed_lock:
                         completed_hosts += 1
                     scan_stats.increment(hosts_scanned=1)
-                
+
+            host_iter = iter_target_ips()
+            exhausted = False
+            max_pending = max(1, max_workers * 2)
+
+            while (future_to_ip or not exhausted) and not shutdown_flag.is_set():
+                while not exhausted and len(future_to_ip) < max_pending and not shutdown_flag.is_set():
+                    try:
+                        ip = next(host_iter)
+                    except StopIteration:
+                        exhausted = True
+                        break
+
+                    if is_ip_excluded(ip, excluded_networks):
+                        verbose_print(f"[*] Skipping excluded IP: {ip}")
+                        with completed_lock:
+                            skipped_hosts += 1
+                        continue
+
+                    submit_scan(ip)
+
+                if not future_to_ip:
+                    if exhausted:
+                        break
+                    continue
+
+                done, not_done = wait(
+                    list(future_to_ip.keys()),
+                    timeout=0.5,
+                    return_when=FIRST_COMPLETED,
+                )
+
+                for future in done:
+                    collect_future(future)
+
                 now = time.time()
                 for future in list(not_done):
                     start = future_start.get(future, start_time)
@@ -814,6 +843,12 @@ Examples:
                         with completed_lock:
                             completed_hosts += 1
                         scan_stats.increment(hosts_scanned=1)
+
+            if submitted_hosts == 0 and not shutdown_flag.is_set():
+                if skipped_hosts:
+                    quiet_print(f"{Colors.YELLOW}[*] All generated target hosts were excluded.{Colors.RESET}")
+                else:
+                    quiet_print(f"{Colors.YELLOW}[*] No target hosts were generated from the requested networks.{Colors.RESET}")
             
             if shutdown_flag.is_set():
                 for f in future_to_ip:

@@ -39,10 +39,10 @@ def test_minified_js_skips_credential_defaults():
     ) for m in matches)
 
 
-def test_turkish_keywords_colon():
-    raw = "parola: gizli12\nşifre: abcdefgh\n".encode('utf-8')
+def test_password_keyword_colon():
+    raw = b"password: hidden12\npasswd: abcdefgh\n"
     matches = analyzer.check_sensitive_patterns(
-        raw, 'text/plain', '10.0.0.1', filename='notlar.txt'
+        raw, 'text/plain', '10.0.0.1', filename='notes.txt'
     )
     cats = {m['category'] for m in matches}
     assert 'password_assignment' in cats
@@ -50,7 +50,7 @@ def test_turkish_keywords_colon():
 
 def test_utf16_le_content_decodes_and_matches():
     # Windows-style UTF-16 LE without BOM (NUL-heavy buffer triggers utf-16-le path)
-    raw = 'sifre = mypassword\n'.encode('utf-16-le')
+    raw = 'password = mypassword\n'.encode('utf-16-le')
     matches = analyzer.check_sensitive_patterns(
         raw, 'application/octet-stream', '10.0.0.1', filename='vpn.txt'
     )
@@ -58,10 +58,10 @@ def test_utf16_le_content_decodes_and_matches():
 
 
 def test_decode_utf16_le_bom():
-    inner = 'parola: test123\n'.encode('utf-16-le')
+    inner = 'password: test123\n'.encode('utf-16-le')
     raw = b'\xff\xfe' + inner
     text = analyzer._decode_text_bytes(raw)
-    assert text and 'parola' in text.lower() and 'test123' in text
+    assert text and 'password' in text.lower() and 'test123' in text
 
 
 def test_dic_skips_vpn_psk_noise():

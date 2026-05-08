@@ -173,6 +173,8 @@ cython_debug/
 # Jesur specific
 out_download/
 *.html
+!jesur/data/templates/
+!jesur/data/templates/*.html
 *.json
 *.csv
 geo_ip_cache.json

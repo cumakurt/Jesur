@@ -3,13 +3,34 @@ import csv
 import os
 from datetime import datetime
 
+
+def _duration_seconds(stats):
+    start = stats.get('start_time')
+    end = stats.get('end_time')
+    if start is None or end is None:
+        return 0
+    try:
+        return max(float(end) - float(start), 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _safe_csv_value(value):
+    """Prevent spreadsheet formula injection in exported CSV cells."""
+    if isinstance(value, str) and value:
+        stripped = value.lstrip()
+        if stripped and stripped[0] in ('=', '+', '-', '@'):
+            return "'" + value
+    return value
+
+
 def export_to_json(data, stats, output_file):
     """Export scan results to JSON format."""
     try:
         export_data = {
             'scan_info': {
                 'timestamp': datetime.now().isoformat(),
-                'duration_seconds': stats.get('end_time', 0) - stats.get('start_time', 0) if stats.get('start_time') else 0,
+                'duration_seconds': _duration_seconds(stats),
                 'statistics': stats
             },
             'results': data
@@ -44,7 +65,7 @@ def export_to_csv(data, output_file, data_type='files'):
             
             writer.writeheader()
             for row in data:
-                writer.writerow(row)
+                writer.writerow({key: _safe_csv_value(value) for key, value in row.items()})
         
         return output_file
     except (IOError, OSError) as e:

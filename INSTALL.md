@@ -22,7 +22,7 @@ Complete installation guide for JESUR - Enhanced SMB Share Scanner
 ### System Requirements
 
 - **Operating System**: Linux, macOS, or Windows (with WSL recommended)
-- **Python**: 3.7 or higher
+- **Python**: 3.9 or higher
 - **RAM**: Minimum 512MB, Recommended 2GB+
 - **Disk Space**: Minimum 100MB for application, additional space for reports
 - **Network**: Access to target SMB shares (ports 445/139)
@@ -305,7 +305,7 @@ deactivate
 - ✅ No root/admin access needed
 
 **Disadvantages:**
-- ❌ Requires Python 3.7+ installed
+- ❌ Requires Python 3.9+ installed
 - ❌ Need to activate environment each time
 
 ---
@@ -507,7 +507,7 @@ Expected output: Help menu with all available options
 
 ```bash
 # Check Python version
-python3 --version  # Should be 3.7+
+python3 --version  # Should be 3.9+
 
 # Check Docker version
 docker --version  # Should be 20.10+
@@ -815,4 +815,3 @@ If you encounter issues during installation:
 
 **Last Updated**: 2024-12-09  
 **Version**: 2.1.0
-

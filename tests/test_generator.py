@@ -38,3 +38,14 @@ def test_save_results_writes_single_unified_report():
         assert "jesur_logo.png" in html
         logo_path = os.path.join(reports, "jesur_logo.png")
         assert os.path.isfile(logo_path)
+
+
+def test_save_results_does_not_mutate_input_paths():
+    scan_args = SimpleNamespace(network="<net>", username="u", domain="d")
+    files = [{"ip": "1.1.1.1", "share": "S", "path": "a/b.txt", "size": 1}]
+    results = [{"ip": "1.1.1.1", "share": "S", "path": "c/d.txt", "category": "x", "match": "<secret>"}]
+    with tempfile.TemporaryDirectory() as tmp:
+        save_results(files, results, "t", scan_args, reports_dir=tmp)
+
+    assert files[0]["path"] == "a/b.txt"
+    assert results[0]["path"] == "c/d.txt"

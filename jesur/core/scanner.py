@@ -233,6 +233,10 @@ ALWAYS_EXCLUDED_SHARES = {"IPC$", "PRINT$"}
 # Common system/cache files that should not be treated as sensitive
 # solely because of generic extensions such as ".db".
 KNOWN_BENIGN_FILENAMES = {"thumbs.db"}
+SENSITIVE_FILENAMES_LOWER = {
+    filename.lower(): description
+    for filename, description in SENSITIVE_FILENAMES.items()
+}
 
 # Second token after "password-" / "passwd-" in stems like password-reset.js (UI code, not secrets)
 _PASSWORD_FILENAME_UI_SUFFIXES = frozenset({
@@ -271,6 +275,11 @@ def _is_known_benign_filename(filename_lower: str) -> bool:
     return filename_lower in KNOWN_BENIGN_FILENAMES
 
 
+def _lookup_sensitive_filename(filename: str) -> Optional[str]:
+    """Return the sensitive-file description using case-insensitive SMB semantics."""
+    return SENSITIVE_FILENAMES.get(filename) or SENSITIVE_FILENAMES_LOWER.get(filename.lower())
+
+
 def _match_sensitive_keyword_filename(filename_lower: str) -> Optional[str]:
     """
     Match sensitive filename keywords as distinct tokens or delimited phrases,
@@ -286,7 +295,7 @@ def _match_sensitive_keyword_filename(filename_lower: str) -> Optional[str]:
             return None
 
     for t in tokens:
-        if t.startswith('password') or t.startswith('passwd') or t in ('parola', 'sifre'):
+        if t.startswith('password') or t.startswith('passwd'):
             return 'Password File'
 
     for t in tokens:
@@ -511,6 +520,17 @@ def read_file_content(
         log_error(f"Unexpected error reading file {file_path}: {e}", exc_info=True)
         return None
 
+
+def _format_smb_timestamp(value: Any) -> str:
+    """Format SMB timestamps without failing the scan on malformed metadata."""
+    try:
+        if value is None:
+            return ""
+        return datetime.fromtimestamp(value).strftime('%Y-%m-%d %H:%M:%S')
+    except (OSError, OverflowError, TypeError, ValueError):
+        return ""
+
+
 def _sanitize_path(file_path: Optional[str]) -> Optional[str]:
     """
     Sanitize and normalize file path, prevent path traversal attacks.
@@ -524,42 +544,26 @@ def _sanitize_path(file_path: Optional[str]) -> Optional[str]:
     if not file_path or not isinstance(file_path, str):
         return None
     
-    # Normalize path separators
-    normalized_path = file_path.replace('\\', '/')
-    
-    # Remove leading slashes
-    normalized_path = normalized_path.lstrip('/')
-    
-    # Path traversal protection - check for various attack patterns
-    dangerous_patterns = [
-        '..',
-        '../',
-        '/..',
-        '\\..',
-        '..\\',
-        '%2e%2e',  # URL encoded
-        '%2E%2E',  # URL encoded uppercase
-        '....',    # Double dot variations
-    ]
-    
-    for pattern in dangerous_patterns:
-        if pattern in normalized_path:
-            verbose_print(f"[-] Path traversal attempt detected: {file_path}")
-            return None
-    
+    from urllib.parse import unquote
+
+    if '\x00' in file_path or any(ord(ch) < 32 for ch in file_path):
+        verbose_print(f"[-] Control character detected in path: {file_path!r}")
+        return None
+
+    decoded_path = unquote(file_path)
+    normalized_path = decoded_path.replace('\\', '/').strip()
+
     # Check for absolute paths (should not start with drive letters or root)
-    if normalized_path.startswith(('C:', 'D:', 'E:', '/', '\\')):
+    if normalized_path.startswith(('/', '\\')) or re.match(r'^[A-Za-z]:', normalized_path):
         verbose_print(f"[-] Absolute path detected: {file_path}")
         return None
-    
-    # Remove any remaining dangerous characters
-    # Keep only alphanumeric, dots, dashes, underscores, and forward slashes
-    import re
-    if not re.match(r'^[\w\.\-\/\\]+$', normalized_path):
-        verbose_print(f"[-] Invalid characters in path: {file_path}")
+
+    parts = [part for part in normalized_path.split('/') if part not in ('', '.')]
+    if any(part == '..' for part in parts):
+        verbose_print(f"[-] Path traversal attempt detected: {file_path}")
         return None
-    
-    return normalized_path
+
+    return '/'.join(parts)
 
 def _safe_ip_dirname(ip: str) -> str:
     """Filesystem-safe segment for a host IP (IPv4 or IPv6)."""
@@ -583,7 +587,9 @@ def _get_safe_output_path(normalized_path: str, share: str, ip: str) -> Tuple[st
     os.makedirs(out_dir, exist_ok=True)
     
     safe_share = re.sub(r'[^\w\-_\.]', '_', (share or '').strip()) or 'share'
+    safe_share = safe_share[:40]
     safe_path_part = re.sub(r'[^\w\-_\.]', '_', normalized_path.replace('/', '_').replace('\\', '_'))
+    safe_path_part = safe_path_part[:140] or 'file'
     unique_key = f"{share}|{normalized_path}".encode("utf-8", errors="ignore")
     short_hash = hashlib.sha1(unique_key).hexdigest()[:10]
     safe_filename = f"{safe_share}__{safe_path_part}__{short_hash}"
@@ -771,43 +777,48 @@ def scan_share(
             display_file_path = normalize_smb_path(smb_file_path.replace('/', '\\'))
             filename_lower = file.filename.lower()
             file_extension = os.path.splitext(file.filename)[1].lower()
-            
-            # Apply filename pattern filter
-            if filters.get('filename_pattern'):
+
+            # Apply filename pattern filter to files only. Directories must remain
+            # traversable so matching files below non-matching folders are found.
+            if not file.isDirectory and filters.get('filename_pattern'):
                 if not filters['filename_pattern'].search(file.filename):
                     verbose_print(f"[*] Skipping {file.filename} (pattern mismatch)")
                     continue
-            
+
+            if file.isDirectory:
+                scan_share(conn, share_name, smb_file_path, ip, local_stats, local_results, local_files, timeout)
+                continue
+
+            file_size = int(getattr(file, 'file_size', 0) or 0)
+
             # Apply extension filters (skip directories).
             # Default: all extensions are scanned; use --include-ext / --exclude-ext to narrow.
             # .txt is only skipped if explicitly excluded or not listed when --include-ext is set.
-            if not file.isDirectory:
-                if filters.get('include_ext'):
-                    if file_extension.lstrip('.') not in filters['include_ext']:
-                        continue
-                
-                if filters.get('exclude_ext'):
-                    ext_normalized = file_extension.lstrip('.')
-                    if ext_normalized in filters['exclude_ext']:
-                        verbose_print(f"[*] Skipping {file.filename} (excluded extension: .{ext_normalized})")
-                        continue
-                
-                # Apply size filters
-                if file.file_size < filters.get('min_size', 0):
+            if filters.get('include_ext'):
+                if file_extension.lstrip('.') not in filters['include_ext']:
                     continue
-                if file.file_size > filters.get('max_size', DEFAULT_MAX_FILE_SIZE):
-                    verbose_print(f"[*] Skipping {file.filename} (too large: {file.file_size} bytes)")
+
+            if filters.get('exclude_ext'):
+                ext_normalized = file_extension.lstrip('.')
+                if ext_normalized in filters['exclude_ext']:
+                    verbose_print(f"[*] Skipping {file.filename} (excluded extension: .{ext_normalized})")
                     continue
-            
+
+            # Apply size filters
+            if file_size < filters.get('min_size', 0):
+                continue
+            if file_size > filters.get('max_size', DEFAULT_MAX_FILE_SIZE):
+                verbose_print(f"[*] Skipping {file.filename} (too large: {file_size} bytes)")
+                continue
+
             # Check Sensitive Filenames/Extensions (before size check for max_read_bytes)
             # This allows large sensitive files to be detected and downloaded even if content can't be read
             is_sensitive = False
-            sensitive_type = None
-            
+            sensitive_type = _lookup_sensitive_filename(file.filename)
+
             # Check exact filename match
-            if file.filename in SENSITIVE_FILENAMES:
+            if sensitive_type:
                 is_sensitive = True
-                sensitive_type = SENSITIVE_FILENAMES[file.filename]
             # Check extension match
             elif file_extension in SENSITIVE_EXTENSIONS and not _is_known_benign_filename(filename_lower):
                 is_sensitive = True
@@ -822,23 +833,45 @@ def scan_share(
             
             # Check if content reading should be skipped due to size
             skip_content_read = False
-            if file.file_size > filters.get('max_read_bytes', DEFAULT_MAX_READ_BYTES):
-                verbose_print(f"[*] Skipping content read for {file.filename} (size {file.file_size} > max_read_bytes)")
+            if file_size > filters.get('max_read_bytes', DEFAULT_MAX_READ_BYTES):
+                verbose_print(f"[*] Skipping content read for {file.filename} (size {file_size} > max_read_bytes)")
                 skip_content_read = True
-            
+
+            # File Processing
+            file_info = {
+                'ip': ip,
+                'share': share_name,
+                'path': display_file_path,
+                'size': file_size,
+                'create_time': _format_smb_timestamp(getattr(file, 'create_time', None)),
+                'last_write_time': _format_smb_timestamp(getattr(file, 'last_write_time', None)),
+                'show_full_path': False
+            }
+            local_files.append(file_info)
+            local_stats['files_scanned'] += 1
+
+            downloaded = None
+            download_counted = False
+            sensitive_file_recorded = False
+
             if is_sensitive:
                 # sensitive_type already determined above
                 if not sensitive_type:
                     sensitive_type = 'Sensitive File'
-                downloaded = download_file_with_fallback(conn, share_name, smb_file_path, ip, file_size=file.file_size)
-                
+                downloaded = download_file_with_fallback(conn, share_name, smb_file_path, ip, file_size=file_size)
+
                 local_stats['sensitive_files_found'] += 1
                 if downloaded:
                     local_stats['files_downloaded'] += 1
-                
+                    download_counted = True
+
+                match_text = f'Found {sensitive_type}'
+                if skip_content_read:
+                    match_text += ' (content not analyzed: size exceeds max_read_bytes)'
+
                 local_results.append({
                     'category': 'sensitive_file',
-                    'match': f'Found {sensitive_type}',
+                    'match': match_text,
                     'ip': ip,
                     'share': share_name,
                     'path': display_file_path,
@@ -846,102 +879,73 @@ def scan_share(
                     'show_full_path': False,
                     'downloaded_file': downloaded
                 })
-                print_finding("SENSITIVE_FILE", f"Found {sensitive_type}", f"\\\\{ip}\\{share_name}\\{display_file_path}")
+                file_info['file_type'] = sensitive_type
+                sensitive_file_recorded = True
+                print_finding("SENSITIVE_FILE", match_text, f"\\\\{ip}\\{share_name}\\{display_file_path}")
 
-            if file.isDirectory:
-                scan_share(conn, share_name, smb_file_path, ip, local_stats, local_results, local_files, timeout)
-            else:
-                # File Processing
-                file_info = {
-                    'ip': ip,
-                    'share': share_name,
-                    'path': display_file_path,
-                    'size': file.file_size,
-                    'create_time': datetime.fromtimestamp(file.create_time).strftime('%Y-%m-%d %H:%M:%S'),
-                    'last_write_time': datetime.fromtimestamp(file.last_write_time).strftime('%Y-%m-%d %H:%M:%S'),
-                    'show_full_path': False
-                }
-                local_files.append(file_info)
-                local_stats['files_scanned'] += 1
-                
-                # Skip binary files unless they're sensitive
-                if (file_extension in BINARY_EXTENSIONS and not is_sensitive) or (file.file_size > DEFAULT_MAX_FILE_SIZE and not is_sensitive):
-                    continue
-                
-                # Read file content if not skipped
-                content = None
-                if not skip_content_read:
-                    content = cache_manager.get_cached_file(display_file_path, file.file_size, file.last_write_time)
-                    if not content:
-                        scan_status.update(share=share_name, action="Reading file", path=display_file_path)
-                        content = read_file_content(conn, share_name, smb_file_path)
-                        if content:
-                            cache_manager.cache_file(display_file_path, file.file_size, file.last_write_time, content)
-                            local_stats['bytes_read'] += len(content)
-                
-                # Process content if available
-                if content:
-                    ftype = get_file_type(content)
-                    file_info['file_type'] = ftype
-                    
-                    if not is_sensitive:
-                        if 'application/x-executable' in ftype:
+            # Skip binary files unless they're sensitive
+            if (file_extension in BINARY_EXTENSIONS and not is_sensitive) or (file_size > DEFAULT_MAX_FILE_SIZE and not is_sensitive):
+                continue
+
+            # Read file content if not skipped
+            content = None
+            if not skip_content_read:
+                cache_key = f"{ip}:{share_name}:{display_file_path}"
+                content = cache_manager.get_cached_file(cache_key, file_size, getattr(file, 'last_write_time', None))
+                if not content:
+                    scan_status.update(share=share_name, action="Reading file", path=display_file_path)
+                    content = read_file_content(conn, share_name, smb_file_path)
+                    if content:
+                        cache_manager.cache_file(cache_key, file_size, getattr(file, 'last_write_time', None), content)
+                        local_stats['bytes_read'] += len(content)
+
+            # Process content if available
+            if content:
+                ftype = get_file_type(content)
+                file_info['file_type'] = ftype
+
+                if not is_sensitive:
+                    if 'application/x-executable' in ftype:
+                        continue
+                    # Magic often labels .txt as octet-stream; still scan text-like extensions
+                    if 'octet-stream' in ftype.lower():
+                        if file_extension.lower() not in TEXT_EXTENSIONS_FOR_CONTENT_SCAN:
                             continue
-                        # Magic often labels .txt as octet-stream; still scan text-like extensions
-                        if 'octet-stream' in ftype.lower():
-                            if file_extension.lower() not in TEXT_EXTENSIONS_FOR_CONTENT_SCAN:
-                                continue
 
-                    matches = check_sensitive_patterns(content, ftype, ip, filename=file.filename)
-                    if matches:
-                        full_path = f"\\\\{ip}\\{share_name}\\{display_file_path}"
-                        print_section(f"Sensitive Content Detected")
-                        quiet_print(f"  {Colors.CYAN}📍 File:{Colors.RESET} {Colors.WHITE}{Colors.BOLD}{full_path}{Colors.RESET}")
-                        quiet_print(f"  {Colors.CYAN}📋 Type:{Colors.RESET} {Colors.WHITE}{ftype}{Colors.RESET}")
-                        
-                        # Download file once for all matches (avoid multiple downloads of same file)
-                        downloaded = download_file_with_fallback(conn, share_name, smb_file_path, ip, file_size=file.file_size, content=content)
-                        if downloaded:
-                            local_stats['files_downloaded'] += 1
-                        else:
-                            verbose_print(f"[!] WARNING: Could not download file {smb_file_path} - Open File button will not appear")
-                        
-                        local_stats['sensitive_content_found'] += len(matches)
-                        # Count file as sensitive file if it has sensitive content
-                        local_stats['sensitive_files_found'] += 1
-                        
-                        for match in matches:
-                            print_finding(match['category'], match['match'])
-                            match.update({
-                                'ip': ip,
-                                'share': share_name,
-                                'path': display_file_path,
-                                'file_type': ftype,
-                                'show_full_path': False,
-                                'downloaded_file': downloaded
-                            })
-                            local_results.append(match)
-                        quiet_print("")
-                elif is_sensitive and skip_content_read:
-                    # Large sensitive file - download it even if we can't read content
-                    sensitive_type = SENSITIVE_FILENAMES.get(file.filename) or SENSITIVE_EXTENSIONS.get(file_extension) or 'Sensitive File (Large)'
-                    downloaded = download_file_with_fallback(conn, share_name, smb_file_path, ip, file_size=file.file_size)
-                    
-                    local_stats['sensitive_files_found'] += 1
-                    if downloaded:
+                matches = check_sensitive_patterns(content, ftype, ip, filename=file.filename)
+                if matches:
+                    full_path = f"\\\\{ip}\\{share_name}\\{display_file_path}"
+                    print_section(f"Sensitive Content Detected")
+                    quiet_print(f"  {Colors.CYAN}📍 File:{Colors.RESET} {Colors.WHITE}{Colors.BOLD}{full_path}{Colors.RESET}")
+                    quiet_print(f"  {Colors.CYAN}📋 Type:{Colors.RESET} {Colors.WHITE}{ftype}{Colors.RESET}")
+
+                    # Download file once for all matches (avoid multiple downloads of same file)
+                    if downloaded is None:
+                        downloaded = download_file_with_fallback(conn, share_name, smb_file_path, ip, file_size=file_size, content=content)
+                    if downloaded and not download_counted:
                         local_stats['files_downloaded'] += 1
-                    
-                    local_results.append({
-                        'category': 'sensitive_file',
-                        'match': f'Found {sensitive_type} (Large file, content not analyzed)',
-                        'ip': ip,
-                        'share': share_name,
-                        'path': display_file_path,
-                        'file_type': sensitive_type,
-                        'show_full_path': False,
-                        'downloaded_file': downloaded
-                    })
-                    print_finding("SENSITIVE_FILE", f"Found {sensitive_type} (Large)", f"\\\\{ip}\\{share_name}\\{display_file_path}")
+                        download_counted = True
+                    elif not downloaded:
+                        verbose_print(f"[!] WARNING: Could not download file {smb_file_path} - Open File button will not appear")
+
+                    local_stats['sensitive_content_found'] += len(matches)
+                    # Count unique sensitive files, not every category attached to the same file.
+                    if not sensitive_file_recorded:
+                        local_stats['sensitive_files_found'] += 1
+                        sensitive_file_recorded = True
+
+                    for match in matches:
+                        print_finding(match['category'], match['match'])
+                        match.update({
+                            'ip': ip,
+                            'share': share_name,
+                            'path': display_file_path,
+                            'file_type': ftype,
+                            'show_full_path': False,
+                            'downloaded_file': downloaded
+                        })
+                        local_results.append(match)
+                    quiet_print("")
 
     except (ConnectionError, TimeoutError, OSError) as e:
         from jesur.utils.logger import log_debug
@@ -1118,4 +1122,3 @@ def scan_host(
         'results': local_results,
         'files': local_files
     }
-

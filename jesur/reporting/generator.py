@@ -1,6 +1,7 @@
 import os
 import shutil
 import jinja2
+from html import escape
 from datetime import datetime
 from collections import Counter, defaultdict
 from typing import Any, Dict, List, Optional, Tuple
@@ -37,6 +38,26 @@ def _human_bytes(n: Any) -> str:
     return f"{n:.1f} PB"
 
 
+def _duration_seconds(stats: Dict[str, Any]) -> float:
+    start = stats.get("start_time")
+    end = stats.get("end_time")
+    if start is None or end is None:
+        return 0.0
+    try:
+        return max(float(end) - float(start), 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _copy_with_normalized_path(entry: Dict[str, Any]) -> Dict[str, Any]:
+    copied = dict(entry)
+    copied["path"] = normalize_smb_path(copied.get("path", "")) or ""
+    downloaded = copied.get("downloaded_file")
+    if downloaded:
+        copied["downloaded_file"] = str(downloaded).replace(os.sep, "/")
+    return copied
+
+
 def _render_fallback_html(
     *,
     formatted_timestamp: str,
@@ -46,14 +67,17 @@ def _render_fallback_html(
     stats: Dict[str, Any],
 ) -> str:
     """Render a minimal built-in report if template assets are missing."""
+    network = escape(str(getattr(scan_args, 'network', 'N/A')))
+    username = escape(str(getattr(scan_args, 'username', 'N/A')))
+    domain = escape(str(getattr(scan_args, 'domain', 'N/A')))
     lines = [
         "<!doctype html>",
-        "<html><head><meta charset='utf-8'><title>JESUR Report</title></head><body>",
+        "<html><head><meta charset='utf-8'><title>JESUR Report</title><style>.brand-logo{width:50%;height:auto;}</style></head><body>",
         '<img src="jesur_logo.png" class="brand-logo" alt="JESUR logo" />',
         "<h1>JESUR Scan Report</h1>",
-        f"<p><strong>Generated:</strong> {formatted_timestamp}</p>",
-        f"<p><strong>Network:</strong> {getattr(scan_args, 'network', 'N/A')}</p>",
-        f"<p><strong>User:</strong> {getattr(scan_args, 'username', 'N/A')}@{getattr(scan_args, 'domain', 'N/A')}</p>",
+        f"<p><strong>Generated:</strong> {escape(formatted_timestamp)}</p>",
+        f"<p><strong>Network:</strong> {network}</p>",
+        f"<p><strong>User:</strong> {username}@{domain}</p>",
         "<h2>Summary</h2>",
         "<ul>",
         f"<li>Hosts scanned: {stats.get('hosts_scanned', 0)}</li>",
@@ -62,15 +86,42 @@ def _render_fallback_html(
         f"<li>Sensitive findings: {len(sensitive_results)}</li>",
         "</ul>",
         "<h2>Accessed files</h2>",
+        "<table><thead><tr><th>IP</th><th>Share</th><th>Path</th><th>Size</th></tr></thead><tbody>",
+    ]
+    for file_info in all_files:
+        lines.append(
+            "<tr>"
+            f"<td>{escape(str(file_info.get('ip', '')))}</td>"
+            f"<td>{escape(str(file_info.get('share', '')))}</td>"
+            f"<td>{escape(str(file_info.get('path', '')))}</td>"
+            f"<td>{escape(_human_bytes(file_info.get('size')))}</td>"
+            "</tr>"
+        )
+    lines.extend([
+        "</tbody></table>",
         "<h2>Sensitive content</h2>",
         "<div id='filter-category-sensitive'></div>",
+        "<table><thead><tr><th>IP</th><th>Share</th><th>Path</th><th>Category</th><th>Match</th></tr></thead><tbody>",
+    ])
+    for result in sensitive_results:
+        lines.append(
+            "<tr>"
+            f"<td>{escape(str(result.get('ip', '')))}</td>"
+            f"<td>{escape(str(result.get('share', '')))}</td>"
+            f"<td>{escape(str(result.get('path', '')))}</td>"
+            f"<td>{escape(str(result.get('category', '')))}</td>"
+            f"<td>{escape(str(result.get('match', '')))}</td>"
+            "</tr>"
+        )
+    lines.extend([
+        "</tbody></table>",
         "<div id='pagination-sensitive'></div>",
         "<button id='back-to-top'>Top</button>",
         "<script>",
         "const chartCategories = [];",
         "</script>",
         "</body></html>",
-    ]
+    ])
     return "\n".join(lines)
 
 
@@ -114,18 +165,18 @@ def save_results(
 
     files_by_ip: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for file_info in all_files:
-        ip = file_info.get("ip", "unknown")
-        file_info["path"] = normalize_smb_path(file_info.get("path", ""))
-        files_by_ip[ip].append(file_info)
+        prepared = _copy_with_normalized_path(file_info)
+        ip = prepared.get("ip", "unknown")
+        files_by_ip[ip].append(prepared)
 
     results_by_ip: Dict[str, Dict[str, List[Dict[str, Any]]]] = defaultdict(lambda: defaultdict(list))
     category_counts: Counter = Counter()
     for result in sensitive_results:
-        ip = result.get("ip", "unknown")
-        share = result.get("share", "unknown")
-        result["path"] = normalize_smb_path(result.get("path", ""))
-        results_by_ip[ip][share].append(result)
-        category_counts[result.get("category", "Unknown")] += 1
+        prepared = _copy_with_normalized_path(result)
+        ip = prepared.get("ip", "unknown")
+        share = prepared.get("share", "unknown")
+        results_by_ip[ip][share].append(prepared)
+        category_counts[prepared.get("category", "Unknown")] += 1
 
     files_per_ip = {ip: len(entries) for ip, entries in files_by_ip.items()}
     chart_data = {
@@ -143,12 +194,7 @@ def save_results(
         },
     }
 
-    duration_s = 0.0
-    if stats.get("start_time") and stats.get("end_time"):
-        try:
-            duration_s = float(stats["end_time"]) - float(stats["start_time"])
-        except (TypeError, ValueError):
-            duration_s = 0.0
+    duration_s = _duration_seconds(stats)
 
     stats_display = {
         "bytes_read_human": _human_bytes(stats.get("bytes_read", 0)),
@@ -169,7 +215,7 @@ def save_results(
 
     if template is not None:
         html = template.render(
-            title="JESUR — Scan Report",
+            title="JESUR - Scan Report",
             timestamp=formatted_timestamp,
             network=scan_args.network if hasattr(scan_args, "network") else "N/A",
             username=scan_args.username,

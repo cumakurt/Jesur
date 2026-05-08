@@ -4,6 +4,7 @@ import re
 import magic
 import io
 import docx
+from threading import Lock
 from typing import Optional
 # import pdfplumber # Imported on demand to optional dependencies don't crash everything if missing
 import openpyxl
@@ -40,8 +41,8 @@ TEXT_EXTENSIONS_FOR_CONTENT_SCAN = frozenset({
 
 # Built-in regex categories (merged with patterns.json; JSON keys override same name)
 # Tuned to avoid minified JS (password:!0), Hunspell .dic (substring psk), Ruby Password::
-# Keywords: EN + TR (parola, sifre, şifre). Separators: = : - – (not only =) for Notepad-style notes.
-_PASSWORD_KEYWORDS = r'password|passwd|pwd|parola|sifre|şifre'
+# Separators: = : - – (not only =) for Notepad-style notes.
+_PASSWORD_KEYWORDS = r'password|passwd|pwd'
 
 DEFAULT_SENSITIVE_PATTERNS = {
     'password_assignment': (
@@ -170,13 +171,15 @@ def _extract_text_for_pattern_scan(
 
 # Global magic instance for better performance
 _magic_instance = None
+_magic_lock = Lock()
 
 def _get_magic_instance():
     """Get or create global magic instance."""
     global _magic_instance
-    if _magic_instance is None:
-        _magic_instance = magic.Magic(mime=True)
-    return _magic_instance
+    with _magic_lock:
+        if _magic_instance is None:
+            _magic_instance = magic.Magic(mime=True)
+        return _magic_instance
 
 def get_file_type(file_content: bytes) -> str:
     """
@@ -190,7 +193,8 @@ def get_file_type(file_content: bytes) -> str:
     """
     try:
         mime = _get_magic_instance()
-        file_type = mime.from_buffer(file_content)
+        with _magic_lock:
+            file_type = mime.from_buffer(file_content)
         
         # Excel and Word checks
         if file_type == 'application/vnd.ms-excel' or \

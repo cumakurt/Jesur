@@ -3,7 +3,7 @@ import json
 import os
 import re
 from functools import lru_cache
-from threading import Lock
+from threading import RLock
 
 class CacheManager:
     """Manages caching for files, shares, and compiled patterns with memory limits."""
@@ -19,7 +19,7 @@ class CacheManager:
         self.file_cache = {}
         self.share_cache = {}
         self.pattern_cache = {}
-        self.lock = Lock()
+        self.lock = RLock()
         self.max_file_cache_size = max_file_cache_size
         self.max_share_cache_size = max_share_cache_size
         self.max_memory_bytes = max_memory_mb * 1024 * 1024
@@ -29,7 +29,7 @@ class CacheManager:
     @lru_cache(maxsize=1000)
     def get_file_hash(self, file_path, size, mtime):
         """Generate hash for file cache key."""
-        return hashlib.md5(f"{file_path}:{size}:{mtime}".encode()).hexdigest()
+        return hashlib.sha256(f"{file_path}:{size}:{mtime}".encode()).hexdigest()
     
     def _estimate_memory(self, content):
         """Estimate memory usage of content."""

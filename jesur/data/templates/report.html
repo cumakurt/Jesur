@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --surface: #ffffff;
+      --line: #d9e1ec;
+      --text: #17202a;
+      --muted: #5f6f82;
+      --blue: #1f6feb;
+      --green: #1f8f5f;
+      --amber: #b7791f;
+      --red: #c2413a;
+      --shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.45;
+    }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(10px);
+    }
+    .topbar-inner {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+    .brand-logo {
+      width: 44px;
+      height: 44px;
+      object-fit: contain;
+      flex: 0 0 auto;
+    }
+    .brand-mark {
+      width: 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #eef4ff;
+      color: var(--blue);
+      font-weight: 800;
+    }
+    .brand h1 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+    .brand p {
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    .nav {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .nav a, button, .download-link {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text);
+      padding: 7px 10px;
+      text-decoration: none;
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .nav a:hover, button:hover, .download-link:hover { border-color: var(--blue); color: var(--blue); }
+    main {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px 20px 56px;
+    }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .metric, .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+    .metric {
+      padding: 14px;
+      min-height: 96px;
+    }
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+    .metric strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 24px;
+      line-height: 1;
+    }
+    .metric em {
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      font-style: normal;
+      font-size: 12px;
+    }
+    .section {
+      margin-top: 24px;
+    }
+    .section-header {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    h2 {
+      margin: 0;
+      font-size: 18px;
+    }
+    .section-header p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .panel {
+      padding: 16px;
+      overflow: hidden;
+    }
+    .chart-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 16px;
+    }
+    .bar-row {
+      display: grid;
+      grid-template-columns: minmax(110px, 200px) 1fr 44px;
+      gap: 10px;
+      align-items: center;
+      min-height: 28px;
+      font-size: 13px;
+    }
+    .bar-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--muted);
+    }
+    .bar-track {
+      height: 10px;
+      border-radius: 999px;
+      background: #e8edf5;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      min-width: 2px;
+      background: var(--blue);
+    }
+    .bar-fill.warn { background: var(--red); }
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .toolbar input, .toolbar select {
+      min-width: 220px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px 10px;
+      background: var(--surface);
+      color: var(--text);
+      font: inherit;
+      font-size: 13px;
+    }
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 860px;
+      background: var(--surface);
+    }
+    th, td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
+      font-size: 13px;
+    }
+    th {
+      position: sticky;
+      top: 69px;
+      background: #f0f4f9;
+      color: #334155;
+      z-index: 1;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+    tbody tr:hover { background: #f8fbff; }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #eef4ff;
+      color: #174ea6;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .badge.red { background: #fff1f0; color: var(--red); }
+    .empty {
+      margin: 0;
+      padding: 18px;
+      color: var(--muted);
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+    }
+    .pagination {
+      margin-top: 12px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: flex-end;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    #back-to-top {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      display: none;
+      box-shadow: var(--shadow);
+    }
+    @media (max-width: 960px) {
+      .summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .chart-grid { grid-template-columns: 1fr; }
+      .topbar-inner { align-items: flex-start; flex-direction: column; }
+      .nav { justify-content: flex-start; }
+    }
+    @media (max-width: 640px) {
+      main { padding: 16px 12px 48px; }
+      .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .toolbar input, .toolbar select { min-width: 100%; width: 100%; }
+      .section-header { display: block; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        {% if logo_href %}
+        <img src="{{ logo_href }}" class="brand-logo" alt="JESUR logo">
+        {% else %}
+        <div class="brand-mark">J</div>
+        {% endif %}
+        <div>
+          <h1>JESUR Scan Report</h1>
+          <p>{{ timestamp }} | {{ username }}@{{ domain }} | {{ network }}</p>
+        </div>
+      </div>
+      <nav class="nav" aria-label="Report sections">
+        <a href="#summary">Summary</a>
+        <a href="#files">Accessed files</a>
+        <a href="#sensitive">Sensitive content</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section id="summary" class="summary-grid" aria-label="Summary">
+      <div class="metric"><span>Hosts scanned</span><strong>{{ chart_data.totals.hosts_scanned }}</strong><em>{{ stats_display.duration_human }}</em></div>
+      <div class="metric"><span>Shares found</span><strong>{{ chart_data.totals.shares_found }}</strong><em>{{ chart_data.totals.readable_shares }} readable</em></div>
+      <div class="metric"><span>Writable shares</span><strong>{{ chart_data.totals.writable_shares }}</strong><em>permission checks</em></div>
+      <div class="metric"><span>Files scanned</span><strong>{{ chart_data.totals.files }}</strong><em>{{ stats_display.bytes_read_human }} read</em></div>
+      <div class="metric"><span>Sensitive findings</span><strong>{{ chart_data.totals.sensitive }}</strong><em>{{ stats.get("sensitive_files_found", 0) }} files</em></div>
+      <div class="metric"><span>Downloaded</span><strong>{{ stats.get("files_downloaded", 0) }}</strong><em>evidence files</em></div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>Finding distribution</h2>
+          <p>Category counts and file volume by host.</p>
+        </div>
+      </div>
+      <div class="chart-grid">
+        <div class="panel">
+          {% set max_category = chart_data.category_counts|max if chart_data.category_counts else 0 %}
+          {% if chart_data.categories %}
+            {% for category in chart_data.categories %}
+            {% set count = chart_data.category_counts[loop.index0] %}
+            {% set width = (count / max_category * 100) if max_category else 0 %}
+            <div class="bar-row">
+              <div class="bar-label" title="{{ category }}">{{ category }}</div>
+              <div class="bar-track"><div class="bar-fill warn" style="width: {{ width }}%"></div></div>
+              <strong>{{ count }}</strong>
+            </div>
+            {% endfor %}
+          {% else %}
+          <p class="empty">No sensitive categories were detected.</p>
+          {% endif %}
+        </div>
+        <div class="panel">
+          {% set max_files = chart_data.files_counts|max if chart_data.files_counts else 0 %}
+          {% if chart_data.files_ips %}
+            {% for ip in chart_data.files_ips %}
+            {% set count = chart_data.files_counts[loop.index0] %}
+            {% set width = (count / max_files * 100) if max_files else 0 %}
+            <div class="bar-row">
+              <div class="bar-label" title="{{ ip }}">{{ ip }}</div>
+              <div class="bar-track"><div class="bar-fill" style="width: {{ width }}%"></div></div>
+              <strong>{{ count }}</strong>
+            </div>
+            {% endfor %}
+          {% else %}
+          <p class="empty">No accessed files were recorded.</p>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+    <section id="files" class="section">
+      <div class="section-header">
+        <div>
+          <h2>Accessed files</h2>
+          <p>Readable files discovered during share traversal.</p>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="toolbar">
+          <input id="search-files" type="search" placeholder="Search files">
+          <span class="badge">{{ chart_data.totals.files }} files</span>
+        </div>
+        {% if files %}
+        <div class="table-wrap">
+          <table id="files-table">
+            <thead>
+              <tr>
+                <th>Host</th>
+                <th>Share</th>
+                <th>Path</th>
+                <th>Size</th>
+                <th>Type</th>
+                <th>Modified</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for ip, entries in files.items() %}
+                {% for file in entries %}
+                <tr class="file-row">
+                  <td>{{ ip }}</td>
+                  <td>{{ file.get("share", "") }}</td>
+                  <td><code>{{ file.get("path", "") }}</code></td>
+                  <td>{{ file.get("size", 0) }}</td>
+                  <td>{{ file.get("file_type", "") }}</td>
+                  <td>{{ file.get("last_write_time", "") }}</td>
+                </tr>
+                {% endfor %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="empty">No accessed files were recorded.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    <section id="sensitive" class="section">
+      <div class="section-header">
+        <div>
+          <h2>Sensitive content</h2>
+          <p>Filename hits and content pattern matches.</p>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="toolbar">
+          <input id="search-sensitive" type="search" placeholder="Search findings">
+          <select id="filter-category-sensitive" aria-label="Filter by category">
+            <option value="">All categories</option>
+            {% for category in chart_data.categories %}
+            <option value="{{ category }}">{{ category }}</option>
+            {% endfor %}
+          </select>
+          <span class="badge red">{{ chart_data.totals.sensitive }} findings</span>
+        </div>
+        {% if results %}
+        <div class="table-wrap">
+          <table id="sensitive-table">
+            <thead>
+              <tr>
+                <th>Host</th>
+                <th>Share</th>
+                <th>Path</th>
+                <th>Category</th>
+                <th>Match</th>
+                <th>Type</th>
+                <th>File</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for ip, shares in results.items() %}
+                {% for share, entries in shares.items() %}
+                  {% for result in entries %}
+                  <tr class="sensitive-row" data-category="{{ result.get("category", "") }}">
+                    <td>{{ ip }}</td>
+                    <td>{{ share }}</td>
+                    <td><code>{{ result.get("path", "") }}</code></td>
+                    <td><span class="badge red">{{ result.get("category", "") }}</span></td>
+                    <td><code>{{ result.get("match", "") }}</code></td>
+                    <td>{{ result.get("file_type", "") }}</td>
+                    <td>
+                      {% if result.get("downloaded_file") %}
+                      <a class="download-link" href="{{ download_href_prefix }}{{ result.get("downloaded_file") }}">Open File</a>
+                      {% else %}
+                      <span class="badge">Not saved</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                {% endfor %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div id="pagination-sensitive" class="pagination"></div>
+        {% else %}
+        <p class="empty">No sensitive content was detected.</p>
+        <div id="pagination-sensitive" class="pagination"></div>
+        {% endif %}
+      </div>
+    </section>
+  </main>
+
+  <button id="back-to-top" type="button">Top</button>
+
+  <script>
+    const chartCategories = {{ chart_data.categories|tojson }};
+    const chartCategoryCounts = {{ chart_data.category_counts|tojson }};
+    const pageSize = {{ page_size|int }};
+
+    const normalize = (value) => (value || "").toString().toLowerCase();
+
+    function bindTextFilter(inputId, rowSelector) {
+      const input = document.getElementById(inputId);
+      if (!input) return;
+      input.addEventListener("input", () => {
+        const query = normalize(input.value);
+        document.querySelectorAll(rowSelector).forEach((row) => {
+          row.dataset.textMatch = normalize(row.innerText).includes(query) ? "1" : "0";
+        });
+        if (rowSelector === ".sensitive-row") {
+          renderSensitiveRows();
+        } else {
+          document.querySelectorAll(rowSelector).forEach((row) => {
+            row.style.display = row.dataset.textMatch === "0" ? "none" : "";
+          });
+        }
+      });
+      input.dispatchEvent(new Event("input"));
+    }
+
+    let sensitivePage = 1;
+
+    function renderSensitiveRows() {
+      const categoryFilter = document.getElementById("filter-category-sensitive");
+      const selectedCategory = categoryFilter ? categoryFilter.value : "";
+      const rows = Array.from(document.querySelectorAll(".sensitive-row"));
+      const matched = rows.filter((row) => {
+        const textOk = row.dataset.textMatch !== "0";
+        const categoryOk = !selectedCategory || row.dataset.category === selectedCategory;
+        return textOk && categoryOk;
+      });
+      const pageCount = Math.max(1, Math.ceil(matched.length / pageSize));
+      sensitivePage = Math.min(sensitivePage, pageCount);
+      rows.forEach((row) => { row.style.display = "none"; });
+      matched.slice((sensitivePage - 1) * pageSize, sensitivePage * pageSize).forEach((row) => {
+        row.style.display = "";
+      });
+      const pager = document.getElementById("pagination-sensitive");
+      if (!pager) return;
+      pager.innerHTML = "";
+      const label = document.createElement("span");
+      label.textContent = `${matched.length} rows | page ${sensitivePage} of ${pageCount}`;
+      const prev = document.createElement("button");
+      prev.type = "button";
+      prev.textContent = "Previous";
+      prev.disabled = sensitivePage <= 1;
+      prev.onclick = () => { sensitivePage -= 1; renderSensitiveRows(); };
+      const next = document.createElement("button");
+      next.type = "button";
+      next.textContent = "Next";
+      next.disabled = sensitivePage >= pageCount;
+      next.onclick = () => { sensitivePage += 1; renderSensitiveRows(); };
+      pager.append(prev, label, next);
+    }
+
+    const categoryFilter = document.getElementById("filter-category-sensitive");
+    if (categoryFilter) {
+      categoryFilter.addEventListener("change", () => {
+        sensitivePage = 1;
+        renderSensitiveRows();
+      });
+    }
+
+    bindTextFilter("search-files", ".file-row");
+    bindTextFilter("search-sensitive", ".sensitive-row");
+
+    const backToTop = document.getElementById("back-to-top");
+    if (backToTop) {
+      backToTop.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
+      window.addEventListener("scroll", () => {
+        backToTop.style.display = window.scrollY > 500 ? "block" : "none";
+      });
+    }
+  </script>
+</body>
+</html>

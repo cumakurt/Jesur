@@ -17,6 +17,7 @@ def test_export_to_json_roundtrip():
             loaded = json.load(f)
         assert loaded["results"] == data
         assert loaded["scan_info"]["statistics"] == stats
+        assert loaded["scan_info"]["duration_seconds"] == 1.0
 
 
 def test_export_to_csv_files():
@@ -39,3 +40,23 @@ def test_export_to_csv_files():
             content = f.read()
         assert "10.0.0.1" in content
         assert "a.txt" in content
+
+
+def test_export_to_csv_escapes_spreadsheet_formulas():
+    data = [
+        {
+            "ip": "10.0.0.1",
+            "share": "s",
+            "path": "=HYPERLINK(\"http://example.test\")",
+            "size": 10,
+            "file_type": "text",
+            "create_time": "t1",
+            "last_write_time": "t2",
+        }
+    ]
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "out.csv")
+        export_to_csv(data, path, "files")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "'=HYPERLINK" in content

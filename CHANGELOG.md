@@ -1,5 +1,31 @@
+# Changelog
 
-<<<<<<< HEAD
+## [2.1.0]
+
+### Added
+- Interactive packaged HTML report template with local filtering, pagination, charts, and evidence links.
+- Regression tests for report immutability, CSV hardening, path sanitization, and IPv4 /31 host counting.
+
+### Changed
+- Reworked scan scheduling to keep only a bounded number of pending host futures in memory.
+- Reset runtime scan state before each CLI run to avoid stale results or shutdown flags in reused processes.
+- Scoped file-content cache keys by host and share to avoid cross-host cache collisions.
+- Made sensitive filename matching case-insensitive for SMB-style filesystem behavior.
+- Kept directory traversal active when filename filters are used, so matching files below non-matching directories are still found.
+- Aligned package metadata and documentation with Python 3.9+ and version 2.1.0.
+
+### Fixed
+- Removed unresolved merge conflict markers from documentation.
+- Prevented duplicate sensitive-file and downloaded-file statistics for the same file.
+- Fixed a cache cleanup self-deadlock risk under memory pressure.
+- Released stale SMB pooled connections when connection health checks fail.
+- Escaped fallback HTML report values and avoided mutating report input data.
+- Hardened CSV exports against spreadsheet formula injection.
+
+### Security
+- Improved SMB download path validation while allowing normal filenames with spaces and punctuation.
+- Avoided exposing stale or cross-target cached content in report and evidence workflows.
+
 ## [2.0.0]
 
 ### Added
@@ -36,7 +62,3 @@
 - Improved error logging without exposing sensitive information
 - Enhanced path traversal protection documentation
 - Optional non-root user execution in Docker
-
-
-=======
->>>>>>> 14e38d1 (change report format)

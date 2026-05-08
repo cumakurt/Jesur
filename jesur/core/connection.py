@@ -19,7 +19,8 @@ import struct
 def _create_patched_function():
     """Create patched function with closure to store original safely."""
     # Store original BEFORE any patching
-    original_func = smb.ntlm.generateChallengeResponseV2
+    current_func = smb.ntlm.generateChallengeResponseV2
+    original_func = getattr(current_func, "_jesur_original", current_func)
     
     def _is_hash_format(password):
         """Check if password is in LM:NT hash format (both 32 hex chars)."""
@@ -75,11 +76,14 @@ def _create_patched_function():
         # Not a hash format - use original function for normal password authentication
         # Use closure variable to avoid recursion
         return original_func(password, user, server_challenge, server_info, domain, client_challenge)
-    
+
+    patched_function._jesur_patched = True
+    patched_function._jesur_original = original_func
     return patched_function
 
-# Apply monkey-patch (only once - the closure-based version is more robust)
-smb.ntlm.generateChallengeResponseV2 = _create_patched_function()
+# Apply monkey-patch once, preserving the original function across reloads.
+if not getattr(smb.ntlm.generateChallengeResponseV2, "_jesur_patched", False):
+    smb.ntlm.generateChallengeResponseV2 = _create_patched_function()
 
 # Retry configuration
 from jesur.core.constants import (
@@ -214,6 +218,23 @@ class SMBConnectionPool:
                     self.connection_semaphore.release()
                 except ValueError:
                     break
+
+    def _remove_connection_locked(self, key: str) -> None:
+        """Close and remove a pooled connection; caller must hold self.lock."""
+        conn = self.connections.pop(key, None)
+        if conn:
+            try:
+                conn.close()
+            except (ConnectionError, OSError):
+                pass
+            except Exception as e:
+                from jesur.utils.logger import log_debug
+                log_debug(f"Error closing pooled connection: {e}")
+            finally:
+                try:
+                    self.connection_semaphore.release()
+                except ValueError:
+                    pass
     
     def _create_connection_key(self, ip, username, password, domain, lm_hash=None, nt_hash=None):
         """Create a connection key without exposing sensitive data."""
@@ -249,14 +270,15 @@ class SMBConnectionPool:
         key = self._create_connection_key(ip, username, password, domain, lm_hash, nt_hash)
         
         with self.lock:
-            if key in self.connections:
-                conn = self.connections[key]
-                if shutdown_flag.is_set():
-                    return None
-                if self._test_connection(conn, timeout=1):
-                    return conn
-                else:
-                    del self.connections[key]
+            conn = self.connections.get(key)
+        if conn:
+            if shutdown_flag.is_set():
+                return None
+            if self._test_connection(conn, timeout=1):
+                return conn
+            with self.lock:
+                if self.connections.get(key) is conn:
+                    self._remove_connection_locked(key)
         
         if shutdown_flag.is_set():
             return None

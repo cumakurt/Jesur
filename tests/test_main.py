@@ -28,6 +28,11 @@ def test_parse_network_token_ipv4():
     assert _estimate_host_count(net) == 254
 
 
+def test_estimate_host_count_ipv4_point_to_point_and_single_host():
+    assert _estimate_host_count(ipaddress.ip_network("192.168.0.0/31")) == 2
+    assert _estimate_host_count(ipaddress.ip_network("192.168.0.1/32")) == 1
+
+
 def test_parse_network_token_ipv6_requires_reasonable_prefix():
     with pytest.raises(ValueError, match="too broad"):
         _parse_network_token("2001:db8::/64")

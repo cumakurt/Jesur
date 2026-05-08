@@ -1,7 +1,7 @@
 import os
 import threading
 import time
-from queue import Queue
+from queue import Empty, Queue
 from threading import Lock
 
 class ScanStatus:
@@ -38,6 +38,17 @@ class ScanStatus:
                 'action': self.current_action,
                 'last_update': self.last_update
             }
+
+    def reset(self):
+        """Reset progress fields for a new scan run."""
+        with self.lock:
+            self.current_ip = ""
+            self.current_share = ""
+            self.current_path = ""
+            self.current_action = ""
+            self.last_update = time.time()
+            self.last_display_update = 0
+            self.start_time = None
 
 class ScanStats:
     """Tracks detailed scan statistics."""
@@ -84,10 +95,26 @@ class ScanStats:
     
     def get_duration(self):
         """Get scan duration in seconds."""
-        if self.start_time:
+        if self.start_time is not None:
             end = self.end_time or time.time()
             return end - self.start_time
         return 0
+
+    def reset(self):
+        """Reset all counters for a new scan run."""
+        with self.lock:
+            self.hosts_scanned = 0
+            self.hosts_with_smb = 0
+            self.shares_found = 0
+            self.readable_shares = 0
+            self.writable_shares = 0
+            self.files_scanned = 0
+            self.sensitive_files_found = 0
+            self.sensitive_content_found = 0
+            self.bytes_read = 0
+            self.files_downloaded = 0
+            self.start_time = None
+            self.end_time = None
 
 # Global Status Objects
 scan_status = ScanStatus()
@@ -109,3 +136,20 @@ verbose_mode = False
 quiet_mode = False
 # Base directory for out_download/ and reports/ (set by CLI before scan)
 output_dir = os.path.abspath('.')
+
+
+def reset_runtime_state() -> None:
+    """Clear per-run global state before starting a new scan."""
+    shutdown_flag.clear()
+    scan_status.reset()
+    scan_stats.reset()
+    with results_lock:
+        results.clear()
+    with all_files_lock:
+        all_files.clear()
+    for queue in (results_queue, all_files_queue):
+        while True:
+            try:
+                queue.get_nowait()
+            except Empty:
+                break
