@@ -93,6 +93,22 @@ RETRY_CONFIG = {
     'exponential_base': RETRY_EXPONENTIAL_BASE
 }
 
+
+def _compact_exception_message(exc: Exception) -> str:
+    """
+    Build a short, single-line exception message.
+    Prevent multiline dumps/tracebacks in runtime logs.
+    """
+    exc_type = type(exc).__name__
+    raw_msg = str(exc).strip()
+    if not raw_msg:
+        return exc_type
+    first_line = raw_msg.splitlines()[0].strip()
+    if len(first_line) > 200:
+        first_line = first_line[:197] + "..."
+    return f"{exc_type}: {first_line}"
+
+
 def retry_on_failure(
     max_attempts: int = RETRY_CONFIG['max_attempts'],
     base_delay: float = RETRY_CONFIG['base_delay'],
@@ -328,8 +344,14 @@ class SMBConnectionPool:
         except Exception as e:
             # Log other errors
             from jesur.core import context
-            from jesur.utils.logger import log_error
-            log_error(f"Unexpected connection error for {ip}: {type(e).__name__}: {str(e)}", exc_info=True)
+            from jesur.utils.logger import log_debug, log_error
+            if type(e).__name__ == "NotConnectedError":
+                # Common transient state in pysmb; keep it out of error stream.
+                log_debug(f"Connection not ready for {ip}: {_compact_exception_message(e)}")
+            elif hasattr(context, 'verbose_mode') and context.verbose_mode:
+                log_debug(f"Unexpected connection error for {ip}: {_compact_exception_message(e)}")
+            else:
+                log_error(f"Unexpected connection error for {ip}: {_compact_exception_message(e)}")
         finally:
             if not connected:
                 self.connection_semaphore.release()

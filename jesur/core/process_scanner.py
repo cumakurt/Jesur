@@ -32,6 +32,20 @@ def scan_host_with_timeout(ip: str, timeout: int = 120, **kwargs: Any) -> Dict[s
     # Thread-local timeout flag
     timeout_flag = threading.Event()
     scan_result = {'data': None, 'exception': None}
+
+    def _compact_exception_message(exc: Exception) -> str:
+        """
+        Build a short, single-line error message.
+        Avoid multiline SMB packet dumps produced by some pysmb exceptions.
+        """
+        exc_type = type(exc).__name__
+        raw_msg = str(exc).strip()
+        if not raw_msg:
+            return exc_type
+        first_line = raw_msg.splitlines()[0].strip()
+        if len(first_line) > 200:
+            first_line = first_line[:197] + "..."
+        return f"{exc_type}: {first_line}"
     
     def scan_wrapper():
         """Wrapper function to run scan in a separate thread."""
@@ -47,9 +61,9 @@ def scan_host_with_timeout(ip: str, timeout: int = 120, **kwargs: Any) -> Dict[s
                 nt_hash=kwargs.get('nt_hash')
             )
         except (ConnectionError, TimeoutError, OSError) as e:
-            scan_result['exception'] = (str(e), traceback.format_exc())
+            scan_result['exception'] = (_compact_exception_message(e), traceback.format_exc())
         except Exception as e:
-            scan_result['exception'] = (str(e), traceback.format_exc())
+            scan_result['exception'] = (_compact_exception_message(e), traceback.format_exc())
         finally:
             timeout_flag.set()
     

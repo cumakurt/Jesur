@@ -797,8 +797,6 @@ Examples:
                             )
                     elif scan_result.get('error'):
                         verbose_print(f"[-] Error scanning {ip}: {scan_result['error']}")
-                        if args.verbose and scan_result.get('traceback'):
-                            verbose_print(f"[DEBUG] Traceback:\n{scan_result['traceback']}")
 
                     with completed_lock:
                         completed_hosts += 1

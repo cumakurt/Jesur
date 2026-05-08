@@ -226,6 +226,9 @@ BINARY_EXTENSIONS = {
     '.qcow2', '.vdi', '.mui'
 }
 
+# Shares that must never be scanned regardless of CLI/config.
+ALWAYS_EXCLUDED_SHARES = {"IPC$", "PRINT$"}
+
 # Second token after "password-" / "passwd-" in stems like password-reset.js (UI code, not secrets)
 _PASSWORD_FILENAME_UI_SUFFIXES = frozenset({
     'reset', 'policy', 'strength', 'recovery', 'hint', 'rules', 'generator', 'meter',
@@ -235,6 +238,21 @@ _PASSWORD_FILENAME_UI_SUFFIXES = frozenset({
     'flow', 'wizard', 'modal', 'dialog', 'validator', 'criteria', 'score', 'complexity',
     'expiry', 'history', 'expired', 'lock', 'unlock', 'change',
 })
+
+
+def _compact_exception_message(exc: Exception) -> str:
+    """
+    Build a short, single-line exception message.
+    Prevent multiline SMB packet dumps from being printed.
+    """
+    exc_type = type(exc).__name__
+    raw_msg = str(exc).strip()
+    if not raw_msg:
+        return exc_type
+    first_line = raw_msg.splitlines()[0].strip()
+    if len(first_line) > 200:
+        first_line = first_line[:197] + "..."
+    return f"{exc_type}: {first_line}"
 
 
 def _filename_stem_tokens(filename_lower: str) -> List[str]:
@@ -913,10 +931,15 @@ def scan_share(
 
     except (ConnectionError, TimeoutError, OSError) as e:
         from jesur.utils.logger import log_debug
-        log_debug(f"Network error scanning share {share_name}: {e}")
+        log_debug(f"Network error scanning share {share_name}: {_compact_exception_message(e)}")
     except Exception as e:
-        from jesur.utils.logger import log_error
-        log_error(f"Unexpected error scanning share {share_name}: {e}", exc_info=True)
+        from jesur.utils.logger import log_debug, log_error
+        compact_msg = _compact_exception_message(e)
+        if type(e).__name__ == "OperationFailure" and "Unable to open directory" in str(e):
+            # Common permission-denied case on protected SMB directories (e.g. SYSVOL\\DfsrPrivate).
+            log_debug(f"Skipping inaccessible directory on share {share_name}: {compact_msg}")
+        else:
+            log_error(f"Unexpected error scanning share {share_name}: {compact_msg}")
 
 def scan_host(
     ip: str,
@@ -1024,10 +1047,16 @@ def scan_host(
                     
                     for share in shares:
                         share_type = "Disk" if share.type == 0 else "Printer" if share.type == 1 else "IPC"
+                        share_upper = share.name.upper()
+
+                        # Hard safety rule: never scan IPC$ and PRINT$.
+                        if share_upper in ALWAYS_EXCLUDED_SHARES:
+                            verbose_print(f"[*] Skipping always-excluded share: {share.name}")
+                            continue
                         
                         # Check if share should be excluded (Case-Insensitive)
                         excluded_shares_upper = {s.upper() for s in filters.get('exclude_shares', set())}
-                        if share.name.upper() in excluded_shares_upper:
+                        if share_upper in excluded_shares_upper:
                             verbose_print(f"[*] Skipping excluded share: {share.name}")
                             continue
                         
@@ -1053,10 +1082,10 @@ def scan_host(
             verbose_print(f"[-] Failed to connect to {ip} - authentication may have failed")
     except (ConnectionError, TimeoutError, OSError) as e:
         from jesur.utils.logger import log_debug
-        log_debug(f"Network error scanning {ip}: {e}")
+        log_debug(f"Network error scanning {ip}: {_compact_exception_message(e)}")
     except Exception as e:
         from jesur.utils.logger import log_error
-        log_error(f"Unexpected error scanning {ip}: {e}", exc_info=True)
+        log_error(f"Unexpected error scanning {ip}: {_compact_exception_message(e)}")
     
     # Return stats, results, and files
     return {
