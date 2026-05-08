@@ -15,20 +15,25 @@ JESUR, ağlar üzerindeki SMB paylaşımlarını taramak, erişim izinlerini ana
 - **Otomatik SMB Paylaşım Keşfi** - Tüm ağları veya belirli IP aralıklarını tarama
 - **Çoklu Kimlik Doğrulama** - Anonim, Kullanıcı Adı/Şifre, NTLM Hash
 - **Gerçek Paralel Tarama** - Yapılandırılabilir thread sayısı ile çoklu thread tarama
-- **Hassas İçerik Tespiti** - Kimlik bilgileri, tokenlar ve sırlar için gelişmiş pattern eşleştirme
-- **Profesyonel Raporlama** - Grafik ve istatistiklerle interaktif HTML raporları
+- **Hassas İçerik Tespiti** - Kimlik bilgileri, bulut anahtarları, tokenlar, bağlantı dizileri ve özel anahtar materyali için gelişmiş eşleştirme
+- **Yüksek Değerli Dosya Keşfi** - Sızma testinde işe yarayan kimlik bilgilerini, dump dosyalarını, bulut/devops configlerini, yedek exportlarını ve assessment artefaktlarını bulur
+- **Profesyonel Raporlama** - Grafikler, filtreleme, severity etiketleri, kanıt linkleri ve geliştirici footer'ı içeren birleşik interaktif HTML dashboard
 - **Çoklu Export Formatları** - HTML, JSON, CSV export
 - **Yapılandırma Dosyası Desteği** - Kurumsal düzeyde yapılandırma yönetimi
 - **Gerçek Zamanlı İlerleme** - ETA hesaplaması ile canlı ilerleme takibi
 
 ### Gelişmiş Özellikler
 - **Dosya İçerik Analizi** - PDF, DOCX, XLSX, Metin ve daha fazlası desteği
+- **Severity Sınıflandırması** - Bulguları HTML ve CSV çıktılarında Critical, High veya Medium olarak işaretler
+- **Path-Aware Tespit** - `.aws/credentials`, `.ssh/id_*`, `.kube/config`, Docker config, Windows registry hive ve `ntds.dit` gibi yüksek değerli konumları tanır
+- **Token ve Secret İmzaları** - AWS, Google, GitHub, GitLab, Slack, JWT, basic-auth URL, DB connection string, VPN secret ve PuTTY/private key içeriklerini tespit eder
 - **Akıllı Filtreleme** - Uzantı, boyut, dosya adı pattern'leri ile filtreleme
 - **Hız Sınırlama** - Ağ aşırı yükünü önlemek için tarama hızını kontrol etme
 - **IP Hariç Tutma Listeleri** - Belirli IP'leri veya ağları atlama
 - **Paylaşım Filtreleme** - Belirli paylaşımları dahil et/hariç tut
 - **Coğrafi Konum Taraması** - Ülke kodu ile IP aralıklarını tarama
 - **Zaman Aşımı Koruması** - Takılmaları önlemek için host başına timeout
+- **Sınırlı İş Kuyruğu** - Büyük taramalarda bekleyen host işlerini sınırlayarak bellek kullanımını güvenli tutar
 - **Zarif Kapanış** - Ctrl+C ile güvenli kesinti
 
 ## 📋 İçindekiler
@@ -632,15 +637,16 @@ python3 Jesur.py --geo tr_TR --threads 100 --quiet \
 
 ## 🔍 Hassas Dosya Tespiti
 
-JESUR aşağıdaki hassas dosya türlerini otomatik olarak tespit eder ve indirir:
+JESUR yetkili sızma testlerinde değerli olabilecek dosyaları otomatik olarak tespit eder ve indirir. Dosya adı, uzantı ve tam SMB yolu birlikte değerlendirilir; bu sayede dosya adı tek başına genel olsa bile bilinen credential konumları yakalanır.
 
 ### Parola Yöneticileri
 - **KeePass**: Veritabanları (`.kdbx`, `.kdb`), Anahtar Dosyaları (`.key`)
-- **1Password**: İçe Aktarma Dosyaları (`.1pif`), Kasa Dosyaları (`.opvault`)
+- **1Password**: İçe Aktarma Dosyaları (`.1pif`), Kasa Dosyaları (`.opvault`, `.agilekeychain`)
 - **LastPass**: Dışa Aktarma Dosyaları (`lastpass.csv`, `lastpass_export.csv`)
 - **Bitwarden**: Veri Dosyaları (`data.json`, `bitwarden.json`)
 - **Dashlane**: Veritabanı (`dashlane.db`)
 - **RoboForm**: Veri Dosyası (`RoboForm.dat`)
+- **Password Safe**: Veritabanları (`.psafe3`)
 - **Tarayıcı Şifreleri**: Chrome/Edge (`Login Data`, `Web Data`), Firefox (`key4.db`, `logins.json`)
 
 ### Uzak Bağlantı Araçları
@@ -662,6 +668,7 @@ JESUR aşağıdaki hassas dosya türlerini otomatik olarak tespit eder ve indiri
 ### SSH Yapılandırması
 - SSH Özel Anahtarları (`id_rsa`, `id_dsa`, `id_ecdsa`, `id_ed25519`)
 - SSH Yapılandırma Dosyaları (`config`, `known_hosts`, `authorized_keys`)
+- Path-aware SSH artefaktları (`.ssh/config`, `.ssh/id_*`, `.ssh/authorized_keys`)
 
 ### Sertifikalar ve Güvenlik
 - SSL/TLS Sertifikaları (`.crt`, `.pem`, `.cer`)
@@ -673,10 +680,12 @@ JESUR aşağıdaki hassas dosya türlerini otomatik olarak tespit eder ve indiri
 
 ### Bulut Kimlik Bilgileri
 - **AWS**: Kimlik Bilgileri (`.aws/credentials`, `.aws/config`, `credentials.csv`)
-- **Azure**: Profil (`azureProfile.json`), Kimlik Bilgileri (`azureCredentials.json`)
-- **GCP**: Servis Hesapları (`service-account.json`), Yapılandırma (`.gcp/`)
+- **Azure**: Profil (`azureProfile.json`), Kimlik Bilgileri (`azureCredentials.json`, `accessTokens.json`)
+- **GCP**: Servis Hesapları (`service-account.json`), config dizinleri
 - **Terraform**: Durum Dosyaları (`.tfstate`), Değişkenler (`.tfvars`)
 - **HashiCorp Vault**: Yapılandırma (`vault.hcl`), Tokenlar (`.vault-token`)
+- **Kubernetes**: Path-aware config (`.kube/config`, `kubeconfig`)
+- **Docker Registry**: Path-aware config (`.docker/config.json`, `.dockerconfigjson`)
 
 ### CI/CD ve Geliştirme
 - **Jenkins**: Kimlik Bilgileri (`credentials.xml`), Yapılandırma (`config.xml`)
@@ -685,11 +694,13 @@ JESUR aşağıdaki hassas dosya türlerini otomatik olarak tespit eder ve indiri
 - **Docker**: Yapılandırma (`config.json`), Compose (`docker-compose.yml`)
 - **Kubernetes**: Yapılandırma (`kubeconfig`), Sırlar (`*.yaml`)
 - **Ansible**: Kasa Dosyaları (`secrets.yml`, `vault_pass`)
+- **Paket Yöneticileri**: NPM (`.npmrc`), Python (`pip.conf`, `.pypirc`), NuGet (`nuget.config`), Maven (`settings.xml`, `maven-settings.xml`, `.m2/settings.xml`), Gradle (`.gradle/gradle.properties`)
 
 ### Ortam ve Yapılandırma Dosyaları
 - Ortam Değişkenleri (`.env`, `.env.local`, `.env.production`)
 - Yapılandırma Dosyaları (`config.ini`, `config.json`, `settings.json`)
 - Uygulama Özellikleri (`application.properties`, `application.yml`)
+- Web/Uygulama Configleri (`web.config`, `app.config`, `appsettings*.json`, `connectionstrings.config`, `wp-config.php`, `database.yml`, `settings.py`, `local_settings.py`, `LocalSettings.php`)
 - NPM Yapılandırması (`.npmrc`)
 - PIP Yapılandırması (`pip.conf`, `.pypirc`)
 
@@ -697,6 +708,20 @@ JESUR aşağıdaki hassas dosya türlerini otomatik olarak tespit eder ve indiri
 - SQL Dökümleri (`.sql`, `.dump`)
 - Veritabanı Dosyaları (`.db`, `.sqlite`, `.sqlite3`, `.mdb`)
 - Yedek Dosyaları (`.bak`, `.backup`, `.old`, `.orig`)
+- Yedek/Export Arşivleri (`backup.zip`, `db_dump.sql`, `loot.zip` ve benzeri backup/export isimleri)
+
+### Windows ve Active Directory Artefaktları
+- Active Directory veritabanı dosyaları (`ntds.dit`, `ntds.dit.bak`, `.dit`)
+- Registry hive ve yedekleri (`Windows\System32\config\SAM`, `SYSTEM`, `SECURITY`, `sam.save`, `system.save`, `security.save`)
+- Memory dump dosyaları (`lsass.dmp`, `.dmp`)
+- Deployment secret dosyaları (`unattend.xml`, `autounattend.xml`, `sysprep.inf`, `sysprep.xml`)
+
+### Pentest ve Recon Artefaktları
+- Packet capture dosyaları (`.pcap`, `.pcapng`, `.har`)
+- Scanner exportları (`.nessus`, `.nmap`, `.gnmap`, Nessus report isimleri)
+- Kerberos materyali (`.kirbi`, `.ccache`)
+- Parola/hash dump dosyaları (`.pwdump`, `.hccapx`, `hashdump.txt`, `secretsdump.txt`)
+- Tool çıktıları (`mimikatz.log`, `sharphound.zip`, `bloodhound.zip`, PowerView/SharpHound/BloodHound benzeri dosya adları)
 
 ### Git Kimlik Bilgileri
 - Git Kimlik Bilgileri (`.git-credentials`)
@@ -711,40 +736,42 @@ JESUR aşağıdaki hassas dosya türlerini otomatik olarak tespit eder ve indiri
 ### Oturum ve Token Dosyaları
 - Oturum Dosyaları (`.session`, `session.dat`)
 - Token Dosyaları (`.token`, `.api_key`)
+- Bulgulara severity atanır (`Critical`, `High` veya `Medium`) ve bu değer HTML/CSV çıktılarında gösterilir.
 
 ## 🔎 Hassas İçerik Tespiti
 
-JESUR dosya içeriklerinde şunları tarar:
+JESUR dosya içeriklerini MIME tespiti, uzantı fallback'leri ve TXT/CSV/XML/JSON/YAML/TOML/config dosyaları, PDF, DOCX ve XLSX için metin çıkarımı ile tarar. Yerleşik imzalar şunları kapsar:
 
 - **Kimlik Bilgileri** - Kullanıcı adları, şifreler, API anahtarları
-- **Tokenlar** - Kimlik doğrulama tokenları, oturum ID'leri
-- **Veritabanı Bağlantıları** - Bağlantı dizileri, kimlik bilgileri
-- **Bulut Kimlik Bilgileri** - AWS, Azure, GCP anahtarları
+- **Bulut Anahtarları** - AWS access key, AWS secret key, Google API key
+- **CI/CD Tokenları** - GitHub, GitLab ve Slack tokenları
+- **Tokenlar** - JWT, kimlik doğrulama tokenları, oturum ID'leri
+- **Veritabanı Bağlantıları** - PostgreSQL, MySQL, MSSQL, MongoDB, Redis ve JDBC connection string'leri
+- **Gömülü Kimlik Bilgileri** - Basic-auth URL'ler ve credential içeren URL'ler
+- **Private Key Materyali** - PEM private key blokları ve PuTTY private key dosyaları
+- **VPN/Tunnel Secret'ları** - Pre-shared key, OpenVPN `auth-user-pass`, tunnel password değerleri
+- **Bulut Kimlik Bilgileri** - AWS, Azure, GCP, Terraform, Vault ve Kubernetes ile ilişkili secret'lar
 - **E-posta Bilgileri** - SMTP kimlik bilgileri, e-posta adresleri
 - **Finansal Veriler** - Kredi kartları, ödeme bilgileri
 - **Dahili IP'ler** - Özel ağ adresleri
 - **Güvenlik Anahtar Kelimeleri** - Güvenlikle ilgili pattern'ler
 - **Exploit Yükleri** - Sızma testi araçları
+- **Yanlış Pozitif Azaltma** - Minified frontend bundle'ları, dictionary dosyaları, benign cache dosyaları ve UI password component'leri mümkün olduğunca filtrelenir
 
 ## 📊 Çıktı Formatları
 
 ### HTML Raporları
 
-İki kapsamlı HTML raporu oluşturulur:
+Tek birleşik HTML dashboard oluşturulur:
 
-1. **Dosyalar Raporu** (`jesur_files_YYYYMMDD_HHMMSS.html`)
-   - Tüm taranan dosyalar
-   - Dosya metadata'sı (boyut, tarihler)
-   - Arama ile interaktif tablolar
-   - Görsel istatistik kartları
-   - Grafikler ve çizelgeler
-
-2. **Hassas Rapor** (`jesur_sensitive_YYYYMMDD_HHMMSS.html`)
-   - Tespit edilen hassas içerik
-   - Dosya indirme linkleri
-   - İçerik önizleme ve kopyalama
-   - Kategori sınıflandırması
-   - İnteraktif görselleştirmeler
+**Birleşik Rapor** (`jesur_report_YYYYMMDD_HHMMSS.html`)
+- Host, paylaşım, dosya, bulgu, okunan veri ve indirilen kanıt için özet kartları
+- Kategoriye göre bulgu dağılımı ve host başına dosya hacmi grafikleri
+- Dosya metadata'sı ve severity içeren aranabilir erişilen dosyalar tablosu
+- Severity, kategori, eşleşme, dosya tipi ve kanıt linkleri içeren aranabilir hassas bulgu tablosu
+- Büyük sonuç setleri için kategori filtresi ve sayfalama
+- Taşınabilir/offline raporlar için yerel `jesur_logo.png` kopyası
+- Proje ve versiyon bilgisi içeren geliştirici footer'ı
 
 ### JSON Export
 
@@ -756,6 +783,7 @@ Oluşturur:
 - `jesur_files_YYYYMMDD_HHMMSS.json` - Dosya listeleri
 - `jesur_sensitive_YYYYMMDD_HHMMSS.json` - Hassas bulgular
 - `jesur_stats_YYYYMMDD_HHMMSS.json` - Tarama istatistikleri
+- Hassas bulgular kategori, eşleşme, dosya tipi, indirilen dosya yolu ve severity içerir
 
 ### CSV Export
 
@@ -766,6 +794,7 @@ python3 Jesur.py 192.168.1.0/24 --output-csv
 Oluşturur:
 - `jesur_files_YYYYMMDD_HHMMSS.csv` - Dosya listeleri
 - `jesur_sensitive_YYYYMMDD_HHMMSS.csv` - Hassas bulgular
+- CSV exportları severity içerir ve spreadsheet formula injection'a karşı sertleştirilmiştir
 
 ### İndirilen Dosyalar
 

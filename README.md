@@ -15,20 +15,25 @@ JESUR is a comprehensive Python application designed to scan SMB shares across n
 - **Automatic SMB Share Discovery** - Scan entire networks or specific IP ranges
 - **Multiple Authentication Methods** - Anonymous, Username/Password, NTLM Hash
 - **True Parallel Scanning** - Multi-threaded scanning with configurable thread count
-- **Sensitive Content Detection** - Advanced pattern matching for credentials, tokens, and secrets
-- **Professional Reporting** - Interactive HTML reports with charts and statistics
+- **Sensitive Content Detection** - Advanced matching for credentials, cloud keys, tokens, connection strings, and private key material
+- **High-Value File Discovery** - Finds pentest-relevant credentials, dumps, cloud/devops configs, backup exports, and assessment artifacts
+- **Professional Reporting** - Unified interactive HTML dashboard with charts, filtering, severity labels, evidence links, and developer footer
 - **Multiple Export Formats** - HTML, JSON, CSV exports
 - **Configuration File Support** - Enterprise-ready configuration management
 - **Real-time Progress** - Live progress tracking with ETA calculation
 
 ### Advanced Features
 - **File Content Analysis** - Supports PDF, DOCX, XLSX, Text, and more
+- **Severity Classification** - Marks findings as Critical, High, or Medium in HTML and CSV outputs
+- **Path-Aware Detection** - Recognizes high-value locations such as `.aws/credentials`, `.ssh/id_*`, `.kube/config`, Docker config, Windows registry hives, and `ntds.dit`
+- **Token & Secret Signatures** - Detects AWS, Google, GitHub, GitLab, Slack, JWT, basic-auth URLs, DB connection strings, VPN secrets, and PuTTY/private keys
 - **Smart Filtering** - Filter by extension, size, filename patterns
 - **Rate Limiting** - Control scan speed to avoid network overload
 - **IP Exclusion Lists** - Skip specific IPs or networks
 - **Share Filtering** - Include/exclude specific shares
 - **Geo-location Scanning** - Scan IP ranges by country code
 - **Timeout Protection** - Per-host timeout to prevent hangs
+- **Bounded Scheduling** - Keeps large scans memory-safe by limiting pending host work
 - **Graceful Shutdown** - Safe interruption with Ctrl+C
 
 ## 📋 Table of Contents
@@ -649,15 +654,16 @@ python3 Jesur.py --geo tr_TR --threads 100 --quiet \
 
 ## 🔍 Sensitive File Detection
 
-JESUR automatically detects and downloads the following sensitive file types:
+JESUR automatically detects and downloads high-value files that are useful during authorized penetration tests. Filename, extension, and full SMB path are evaluated together, so common credential locations are found even when the filename alone is generic.
 
 ### Password Managers
 - **KeePass**: Databases (`.kdbx`, `.kdb`), Key Files (`.key`)
-- **1Password**: Import Files (`.1pif`), Vaults (`.opvault`)
+- **1Password**: Import Files (`.1pif`), Vaults (`.opvault`, `.agilekeychain`)
 - **LastPass**: Export Files (`lastpass.csv`, `lastpass_export.csv`)
 - **Bitwarden**: Data Files (`data.json`, `bitwarden.json`)
 - **Dashlane**: Database (`dashlane.db`)
 - **RoboForm**: Data File (`RoboForm.dat`)
+- **Password Safe**: Databases (`.psafe3`)
 - **Browser Passwords**: Chrome/Edge (`Login Data`, `Web Data`), Firefox (`key4.db`, `logins.json`)
 
 ### Remote Connection Tools
@@ -679,6 +685,7 @@ JESUR automatically detects and downloads the following sensitive file types:
 ### SSH Configuration
 - SSH Private Keys (`id_rsa`, `id_dsa`, `id_ecdsa`, `id_ed25519`)
 - SSH Config Files (`config`, `known_hosts`, `authorized_keys`)
+- Path-aware SSH artifacts (`.ssh/config`, `.ssh/id_*`, `.ssh/authorized_keys`)
 
 ### Certificates & Security
 - SSL/TLS Certificates (`.crt`, `.pem`, `.cer`)
@@ -690,10 +697,12 @@ JESUR automatically detects and downloads the following sensitive file types:
 
 ### Cloud Credentials
 - **AWS**: Credentials (`.aws/credentials`, `.aws/config`, `credentials.csv`)
-- **Azure**: Profile (`azureProfile.json`), Credentials (`azureCredentials.json`)
-- **GCP**: Service Accounts (`service-account.json`), Config (`.gcp/`)
+- **Azure**: Profile (`azureProfile.json`), Credentials (`azureCredentials.json`, `accessTokens.json`)
+- **GCP**: Service Accounts (`service-account.json`), Config directories
 - **Terraform**: State Files (`.tfstate`), Variables (`.tfvars`)
 - **HashiCorp Vault**: Configuration (`vault.hcl`), Tokens (`.vault-token`)
+- **Kubernetes**: Path-aware config (`.kube/config`, `kubeconfig`)
+- **Docker Registry**: Path-aware config (`.docker/config.json`, `.dockerconfigjson`)
 
 ### CI/CD & Development
 - **Jenkins**: Credentials (`credentials.xml`), Config (`config.xml`)
@@ -702,11 +711,13 @@ JESUR automatically detects and downloads the following sensitive file types:
 - **Docker**: Config (`config.json`), Compose (`docker-compose.yml`)
 - **Kubernetes**: Config (`kubeconfig`), Secrets (`*.yaml`)
 - **Ansible**: Vault Files (`secrets.yml`, `vault_pass`)
+- **Package Managers**: NPM (`.npmrc`), Python (`pip.conf`, `.pypirc`), NuGet (`nuget.config`), Maven (`settings.xml`, `maven-settings.xml`, `.m2/settings.xml`), Gradle (`.gradle/gradle.properties`)
 
 ### Environment & Config Files
 - Environment Variables (`.env`, `.env.local`, `.env.production`)
 - Configuration Files (`config.ini`, `config.json`, `settings.json`)
 - Application Properties (`application.properties`, `application.yml`)
+- Web/Application Config (`web.config`, `app.config`, `appsettings*.json`, `connectionstrings.config`, `wp-config.php`, `database.yml`, `settings.py`, `local_settings.py`, `LocalSettings.php`)
 - NPM Config (`.npmrc`)
 - PIP Config (`pip.conf`, `.pypirc`)
 
@@ -714,6 +725,20 @@ JESUR automatically detects and downloads the following sensitive file types:
 - SQL Dumps (`.sql`, `.dump`)
 - Database Files (`.db`, `.sqlite`, `.sqlite3`, `.mdb`)
 - Backup Files (`.bak`, `.backup`, `.old`, `.orig`)
+- Backup/Export Archives (`backup.zip`, `db_dump.sql`, `loot.zip`, and similar backup/export filenames)
+
+### Windows & Active Directory Artifacts
+- Active Directory database files (`ntds.dit`, `ntds.dit.bak`, `.dit`)
+- Registry hives and backups (`Windows\System32\config\SAM`, `SYSTEM`, `SECURITY`, `sam.save`, `system.save`, `security.save`)
+- Memory dumps (`lsass.dmp`, `.dmp`)
+- Deployment secrets (`unattend.xml`, `autounattend.xml`, `sysprep.inf`, `sysprep.xml`)
+
+### Pentest & Recon Artifacts
+- Packet captures (`.pcap`, `.pcapng`, `.har`)
+- Scanner exports (`.nessus`, `.nmap`, `.gnmap`, Nessus report filenames)
+- Kerberos material (`.kirbi`, `.ccache`)
+- Password/hash dumps (`.pwdump`, `.hccapx`, `hashdump.txt`, `secretsdump.txt`)
+- Tool output (`mimikatz.log`, `sharphound.zip`, `bloodhound.zip`, PowerView/SharpHound/BloodHound-style filenames)
 
 ### Git Credentials
 - Git Credentials (`.git-credentials`)
@@ -728,40 +753,42 @@ JESUR automatically detects and downloads the following sensitive file types:
 ### Session & Token Files
 - Session Files (`.session`, `session.dat`)
 - Token Files (`.token`, `.api_key`)
+- Findings are assigned a severity (`Critical`, `High`, or `Medium`) and this severity is included in HTML and CSV outputs.
 
 ## 🔎 Sensitive Content Detection
 
-JESUR scans file contents for:
+JESUR scans file contents using MIME detection, extension fallbacks, and text extraction for TXT/CSV/XML/JSON/YAML/TOML/config files, PDF, DOCX, and XLSX. Built-in signatures include:
 
 - **Credentials** - Usernames, passwords, API keys
-- **Tokens** - Authentication tokens, session IDs
-- **Database Connections** - Connection strings, credentials
-- **Cloud Credentials** - AWS, Azure, GCP keys
+- **Cloud Keys** - AWS access keys, AWS secret keys, Google API keys
+- **CI/CD Tokens** - GitHub, GitLab, and Slack tokens
+- **Tokens** - JWTs, authentication tokens, session IDs
+- **Database Connections** - PostgreSQL, MySQL, MSSQL, MongoDB, Redis, and JDBC connection strings
+- **Embedded Credentials** - Basic-auth URLs and credential-bearing URLs
+- **Private Key Material** - PEM private key blocks and PuTTY private key files
+- **VPN/Tunnel Secrets** - Pre-shared keys, OpenVPN `auth-user-pass`, tunnel passwords
+- **Cloud Credentials** - AWS, Azure, GCP, Terraform, Vault, and Kubernetes-related secrets
 - **Email Information** - SMTP credentials, email addresses
 - **Financial Data** - Credit cards, payment info
 - **Internal IPs** - Private network addresses
 - **Security Keywords** - Security-related patterns
 - **Exploit Payloads** - Penetration testing tools
+- **False Positive Reduction** - Minified frontend bundles, dictionary files, benign cache files, and UI password components are de-noised where possible
 
 ## 📊 Output Formats
 
 ### HTML Reports
 
-Two comprehensive HTML reports are generated:
+A single unified HTML dashboard is generated:
 
-1. **Files Report** (`jesur_files_YYYYMMDD_HHMMSS.html`)
-   - All scanned files
-   - File metadata (size, dates)
-   - Interactive tables with search
-   - Visual statistics cards
-   - Charts and graphs
-
-2. **Sensitive Report** (`jesur_sensitive_YYYYMMDD_HHMMSS.html`)
-   - Detected sensitive content
-   - File download links
-   - Content preview and copy
-   - Category classification
-   - Interactive visualizations
+**Unified Report** (`jesur_report_YYYYMMDD_HHMMSS.html`)
+- Summary cards for hosts, shares, files, findings, bytes read, and downloaded evidence
+- Finding distribution charts by category and file volume by host
+- Searchable accessed-file table with file metadata and severity
+- Searchable sensitive-finding table with severity, category, match, file type, and evidence links
+- Category filter and pagination for large result sets
+- Local `jesur_logo.png` copy for portable/offline reports
+- Developer footer with project and version information
 
 ### JSON Export
 
@@ -773,6 +800,7 @@ Generates:
 - `jesur_files_YYYYMMDD_HHMMSS.json` - File listings
 - `jesur_sensitive_YYYYMMDD_HHMMSS.json` - Sensitive findings
 - `jesur_stats_YYYYMMDD_HHMMSS.json` - Scan statistics
+- Sensitive findings include category, match, file type, downloaded file path, and severity
 
 ### CSV Export
 
@@ -783,6 +811,7 @@ python3 Jesur.py 192.168.1.0/24 --output-csv
 Generates:
 - `jesur_files_YYYYMMDD_HHMMSS.csv` - File listings
 - `jesur_sensitive_YYYYMMDD_HHMMSS.csv` - Sensitive findings
+- CSV exports include severity and are hardened against spreadsheet formula injection
 
 ### Downloaded Files
 
