@@ -106,7 +106,23 @@ SENSITIVE_EXTENSIONS = {
     # Session and Token Files
     '.session': 'Session File',
     '.token': 'Token File',
-    '.api_key': 'API Key File'
+    '.api_key': 'API Key File',
+
+    # Pentest Evidence and Reconnaissance
+    '.dmp': 'Memory Dump File',
+    '.dit': 'Active Directory Database File',
+    '.pcap': 'Packet Capture File',
+    '.pcapng': 'Packet Capture File',
+    '.har': 'HTTP Archive File',
+    '.nessus': 'Nessus Scan Export',
+    '.nmap': 'Nmap Scan Output',
+    '.gnmap': 'Nmap Grepable Output',
+    '.pwdump': 'Password Hash Dump',
+    '.hccapx': 'Wireless Hash Capture',
+    '.kirbi': 'Kerberos Ticket File',
+    '.ccache': 'Kerberos Credential Cache',
+    '.psafe3': 'Password Safe Database',
+    '.agilekeychain': '1Password Keychain',
 }
 
 SENSITIVE_FILENAMES = {
@@ -217,8 +233,71 @@ SENSITIVE_FILENAMES = {
     
     # CyberArk
     'vault.ini': 'CyberArk Vault Configuration',
-    'cyberark.config': 'CyberArk Configuration'
+    'cyberark.config': 'CyberArk Configuration',
+
+    # Web and Application Configuration
+    'web.config': 'ASP.NET Web Configuration',
+    'app.config': 'Application Configuration',
+    'appsettings.json': 'ASP.NET Application Settings',
+    'appsettings.production.json': 'Production Application Settings',
+    'appsettings.development.json': 'Development Application Settings',
+    'connectionstrings.config': 'Connection Strings Configuration',
+    'wp-config.php': 'WordPress Configuration',
+    'LocalSettings.php': 'MediaWiki Configuration',
+    'database.yml': 'Rails Database Configuration',
+    'secrets.json': 'Application Secrets File',
+    'settings.py': 'Python Application Settings',
+    'local_settings.py': 'Python Local Settings',
+
+    # Cloud, DevOps, and Package Manager Credentials
+    '.netrc': 'Netrc Credentials File',
+    'netrc': 'Netrc Credentials File',
+    '.dockerconfigjson': 'Docker Registry Credentials',
+    'nuget.config': 'NuGet Configuration',
+    'maven-settings.xml': 'Maven Settings',
+    'settings.xml': 'Maven Settings',
+    'ansible.cfg': 'Ansible Configuration',
+    'inventory.ini': 'Ansible Inventory',
+    'hosts.ini': 'Ansible Inventory',
+
+    # Windows and Active Directory Artifacts
+    'ntds.dit': 'Active Directory Database',
+    'lsass.dmp': 'LSASS Memory Dump',
+    'sam.save': 'Windows SAM Backup',
+    'system.save': 'Windows SYSTEM Backup',
+    'security.save': 'Windows SECURITY Backup',
+    'unattend.xml': 'Windows Unattended Install File',
+    'autounattend.xml': 'Windows Unattended Install File',
+    'sysprep.inf': 'Windows Sysprep Configuration',
+    'sysprep.xml': 'Windows Sysprep Configuration',
+
+    # Offensive Tool and Recon Output
+    'mimikatz.log': 'Credential Dumping Tool Output',
+    'hashdump.txt': 'Password Hash Dump',
+    'secretsdump.txt': 'Secrets Dump Output',
+    'sharphound.zip': 'SharpHound Collection Archive',
+    'bloodhound.zip': 'BloodHound Collection Archive',
+    'loot.zip': 'Collected Assessment Evidence',
 }
+
+SENSITIVE_PATH_PATTERNS = (
+    (re.compile(r'(?i)(^|\\)\.aws\\(credentials|config)$'), 'AWS CLI Credentials'),
+    (re.compile(r'(?i)(^|\\)\.azure\\(azureProfile\.json|azureCredentials\.json|accessTokens\.json)$'), 'Azure CLI Credentials'),
+    (re.compile(r'(?i)(^|\\)\.kube\\config$'), 'Kubernetes Configuration'),
+    (re.compile(r'(?i)(^|\\)\.docker\\config\.json$'), 'Docker Registry Credentials'),
+    (re.compile(r'(?i)(^|\\)\.m2\\settings\.xml$'), 'Maven Settings'),
+    (re.compile(r'(?i)(^|\\)\.gradle\\gradle\.properties$'), 'Gradle Properties'),
+    (re.compile(r'(?i)(^|\\)\.ssh\\(config|known_hosts|authorized_keys|id_rsa|id_dsa|id_ecdsa|id_ed25519)(\..*)?$'), 'SSH Credential Artifact'),
+    (re.compile(r'(?i)(^|\\)(web|app|application)\.config$'), 'Application Configuration'),
+    (re.compile(r'(?i)(^|\\)appsettings(\.[^\\]+)?\.json$'), 'ASP.NET Application Settings'),
+    (re.compile(r'(?i)(^|\\)(prod|production|stage|staging|dev|development|test)\.env$'), 'Environment Secrets File'),
+    (re.compile(r'(?i)(^|\\)(id_rsa|id_dsa|id_ecdsa|id_ed25519)(\..*)?$'), 'SSH Private Key'),
+    (re.compile(r'(?i)(^|\\)windows\\system32\\config\\(sam|system|security)$'), 'Windows Registry Hive'),
+    (re.compile(r'(?i)(^|\\)(lsass|memory|process)\.dmp$'), 'Memory Dump File'),
+    (re.compile(r'(?i)(^|\\)(ntds\.dit|ntds\.dit\.bak)$'), 'Active Directory Database'),
+    (re.compile(r'(?i)(^|\\)(unattend|autounattend|sysprep)\.(xml|inf)$'), 'Windows Deployment Secrets'),
+    (re.compile(r'(?i)(^|\\)(sharphound|bloodhound|powerview|mimikatz|secretsdump|hashdump)[^\\]*$'), 'Assessment Tool Output'),
+)
 
 BINARY_EXTENSIONS = {
     '.exe', '.dll', '.sys', '.bin', '.dat', '.db', '.msi', '.com', '.ocx', '.drv', 
@@ -238,6 +317,20 @@ SENSITIVE_FILENAMES_LOWER = {
     for filename, description in SENSITIVE_FILENAMES.items()
 }
 
+CRITICAL_FILE_KEYWORDS = (
+    'Private Key',
+    'Password Database',
+    'Saved Passwords',
+    'Active Directory Database',
+    'LSASS',
+    'Memory Dump',
+    'Windows Registry Hive',
+    'Kerberos',
+    'Hash Dump',
+    'Secrets Dump',
+    'Credential Extraction',
+)
+
 # Second token after "password-" / "passwd-" in stems like password-reset.js (UI code, not secrets)
 _PASSWORD_FILENAME_UI_SUFFIXES = frozenset({
     'reset', 'policy', 'strength', 'recovery', 'hint', 'rules', 'generator', 'meter',
@@ -246,6 +339,15 @@ _PASSWORD_FILENAME_UI_SUFFIXES = frozenset({
     'component', 'module', 'page', 'router', 'auth', 'oauth', 'bar', 'box', 'container',
     'flow', 'wizard', 'modal', 'dialog', 'validator', 'criteria', 'score', 'complexity',
     'expiry', 'history', 'expired', 'lock', 'unlock', 'change',
+})
+
+_ARCHIVE_EXTENSIONS = frozenset({
+    '.zip', '.7z', '.rar', '.tar', '.gz', '.tgz', '.bz2', '.xz',
+})
+
+_BACKUP_EXTENSIONS = _ARCHIVE_EXTENSIONS | frozenset({
+    '.bak', '.backup', '.old', '.orig', '.sql', '.dump', '.db', '.sqlite',
+    '.sqlite3', '.config', '.conf', '.ini', '.json', '.xml', '.yml', '.yaml',
 })
 
 
@@ -280,6 +382,24 @@ def _lookup_sensitive_filename(filename: str) -> Optional[str]:
     return SENSITIVE_FILENAMES.get(filename) or SENSITIVE_FILENAMES_LOWER.get(filename.lower())
 
 
+def _match_sensitive_path(path: str) -> Optional[str]:
+    """Return a sensitive-file description using path-aware rules."""
+    normalized = normalize_smb_path(path or '') or ''
+    for pattern, description in SENSITIVE_PATH_PATTERNS:
+        if pattern.search(normalized):
+            return description
+    return None
+
+
+def _severity_for_sensitive_file(description: Optional[str]) -> str:
+    """Map sensitive file descriptions to report-friendly severities."""
+    if not description:
+        return 'High'
+    if any(keyword in description for keyword in CRITICAL_FILE_KEYWORDS):
+        return 'Critical'
+    return 'High'
+
+
 def _match_sensitive_keyword_filename(filename_lower: str) -> Optional[str]:
     """
     Match sensitive filename keywords as distinct tokens or delimited phrases,
@@ -288,6 +408,7 @@ def _match_sensitive_keyword_filename(filename_lower: str) -> Optional[str]:
     tokens = _filename_stem_tokens(filename_lower)
     if not tokens:
         return None
+    _, ext = os.path.splitext(filename_lower)
 
     # password-reset.js / passwd-policy.css — web UI assets, not credential files
     if len(tokens) >= 2 and tokens[0] in ('password', 'passwd'):
@@ -346,6 +467,14 @@ def _match_sensitive_keyword_filename(filename_lower: str) -> Optional[str]:
     for t in tokens:
         if t.startswith('nessus'):
             return 'Nessus Scan File'
+        if t in ('sharphound', 'bloodhound', 'powerview', 'mimikatz', 'secretsdump', 'hashdump'):
+            return 'Assessment Tool Output'
+        if t in ('ntds', 'lsass'):
+            return 'Credential Extraction Artifact'
+        if t in ('unattend', 'autounattend', 'sysprep'):
+            return 'Windows Deployment Secrets'
+        if t in ('backup', 'backups', 'dump', 'dumps', 'export', 'exports', 'loot') and ext in _BACKUP_EXTENSIONS:
+            return 'Backup or Export File'
 
     return None
 
@@ -814,7 +943,7 @@ def scan_share(
             # Check Sensitive Filenames/Extensions (before size check for max_read_bytes)
             # This allows large sensitive files to be detected and downloaded even if content can't be read
             is_sensitive = False
-            sensitive_type = _lookup_sensitive_filename(file.filename)
+            sensitive_type = _match_sensitive_path(display_file_path) or _lookup_sensitive_filename(file.filename)
 
             # Check exact filename match
             if sensitive_type:
@@ -858,6 +987,7 @@ def scan_share(
                 # sensitive_type already determined above
                 if not sensitive_type:
                     sensitive_type = 'Sensitive File'
+                severity = _severity_for_sensitive_file(sensitive_type)
                 downloaded = download_file_with_fallback(conn, share_name, smb_file_path, ip, file_size=file_size)
 
                 local_stats['sensitive_files_found'] += 1
@@ -876,10 +1006,12 @@ def scan_share(
                     'share': share_name,
                     'path': display_file_path,
                     'file_type': sensitive_type,
+                    'severity': severity,
                     'show_full_path': False,
                     'downloaded_file': downloaded
                 })
                 file_info['file_type'] = sensitive_type
+                file_info['severity'] = severity
                 sensitive_file_recorded = True
                 print_finding("SENSITIVE_FILE", match_text, f"\\\\{ip}\\{share_name}\\{display_file_path}")
 
@@ -941,6 +1073,7 @@ def scan_share(
                             'share': share_name,
                             'path': display_file_path,
                             'file_type': ftype,
+                            'severity': match.get('severity', 'Medium'),
                             'show_full_path': False,
                             'downloaded_file': downloaded
                         })

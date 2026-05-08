@@ -28,6 +28,7 @@ def test_export_to_csv_files():
             "path": "a.txt",
             "size": 10,
             "file_type": "text",
+            "severity": "High",
             "create_time": "t1",
             "last_write_time": "t2",
         }
@@ -40,6 +41,8 @@ def test_export_to_csv_files():
             content = f.read()
         assert "10.0.0.1" in content
         assert "a.txt" in content
+        assert "severity" in content
+        assert "High" in content
 
 
 def test_export_to_csv_escapes_spreadsheet_formulas():

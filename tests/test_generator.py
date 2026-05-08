@@ -12,9 +12,9 @@ def test_save_results_writes_single_unified_report():
         reports = os.path.join(tmp, "reports")
         path, second = save_results(
             [{"ip": "192.168.1.1", "share": "S", "path": "x.txt", "size": 1,
-              "create_time": "c", "last_write_time": "w"}],
+              "create_time": "c", "last_write_time": "w", "severity": "High"}],
             [{"ip": "192.168.1.1", "share": "S", "path": "y.txt", "category": "test",
-              "match": "m", "file_type": "t", "downloaded_file": None}],
+              "match": "m", "file_type": "t", "severity": "Critical", "downloaded_file": None}],
             "t",
             scan_args,
             stats={"hosts_scanned": 1, "bytes_read": 100, "start_time": 0, "end_time": 1},
@@ -36,6 +36,12 @@ def test_save_results_writes_single_unified_report():
         assert "pagination-sensitive" in html
         assert 'class="brand-logo"' in html
         assert "jesur_logo.png" in html
+        assert "Developer:" in html
+        assert "Cuma KURT" in html
+        assert "https://github.com/cumakurt/Jesur" in html
+        assert "JESUR version" in html
+        assert "Critical" in html
+        assert "High" in html
         logo_path = os.path.join(reports, "jesur_logo.png")
         assert os.path.isfile(logo_path)
 

@@ -4,6 +4,9 @@
 
 ### Added
 - Interactive packaged HTML report template with local filtering, pagination, charts, and evidence links.
+- High-value file discovery for cloud credentials, Windows/Active Directory artifacts, offensive tool output, backup/export archives, package-manager credentials, and deployment secrets.
+- Built-in content signatures for cloud keys, CI/CD tokens, JWTs, basic-auth URLs, database connection strings, and PuTTY/private key material.
+- Severity labels for sensitive file and content findings in reports and CSV exports.
 - Regression tests for report immutability, CSV hardening, path sanitization, and IPv4 /31 host counting.
 
 ### Changed
@@ -11,6 +14,7 @@
 - Reset runtime scan state before each CLI run to avoid stale results or shutdown flags in reused processes.
 - Scoped file-content cache keys by host and share to avoid cross-host cache collisions.
 - Made sensitive filename matching case-insensitive for SMB-style filesystem behavior.
+- Added path-aware matching for credential locations such as `.aws/credentials`, `.ssh/id_*`, `.kube/config`, Docker config, Windows registry hives, and AD database files.
 - Kept directory traversal active when filename filters are used, so matching files below non-matching directories are still found.
 - Aligned package metadata and documentation with Python 3.9+ and version 2.1.0.
 

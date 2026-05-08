@@ -36,7 +36,9 @@ TEXT_EXTENSIONS_FOR_CONTENT_SCAN = frozenset({
     '.txt', '.tct',
     '.cfg', '.ini', '.log', '.conf', '.env', '.properties', '.md', '.csv', '.xml',
     '.json', '.yml', '.yaml', '.vpn', '.toml', '.rc', '.sh', '.bat', '.ps1', '.cnf',
-    '.ovpn', '.pem', '.crt', '.csr', '.key', '.cer', '.asc', '.pub',
+    '.config', '.ovpn', '.pem', '.crt', '.csr', '.key', '.cer', '.asc', '.pub',
+    '.tf', '.tfvars', '.hcl', '.dockerfile', '.netrc', '.npmrc', '.pypirc', '.reg',
+    '.plist', '.service', '.timer', '.sql', '.rdp',
 })
 
 # Built-in regex categories (merged with patterns.json; JSON keys override same name)
@@ -58,11 +60,56 @@ DEFAULT_SENSITIVE_PATTERNS = {
     'api_key_assignment': (
         r'(?i)(api[_-]?key|access[_-]?token|client[_-]?secret)\s*[:=]\s*(?!true\b|false\b|!0\b|!1\b)(\S{8,})'
     ),
+    'aws_access_key_id': r'\b(?:A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|ASIA)[A-Z0-9]{16}\b',
+    'aws_secret_access_key': (
+        r'(?i)\baws[_-]?secret[_-]?access[_-]?key\b\s*[:=]\s*["\']?([A-Za-z0-9/+=]{40})'
+    ),
+    'google_api_key': r'\bAIza[0-9A-Za-z_-]{35}\b',
+    'github_token': r'\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,255}\b|\bgithub_pat_[A-Za-z0-9_]{80,255}\b',
+    'gitlab_token': r'\bglpat-[A-Za-z0-9_-]{20,}\b',
+    'slack_token': r'\bxox[baprs]-[A-Za-z0-9-]{10,}\b',
+    'jwt_token': r'\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b',
+    'basic_auth_url': r'(?i)\b[a-z][a-z0-9+.-]{2,}://[^/\s:@]{2,}:[^@\s/]{2,}@[^\s\'"<>]+',
+    'database_connection_string': (
+        r'(?i)\b(?:jdbc:(?:mysql|postgresql|sqlserver|oracle)|mongodb(?:\+srv)?://|postgres(?:ql)?://|mysql://|mssql://|redis://)[^\s\'"<>]{8,}'
+    ),
+    'putty_private_key': r'(?im)^PuTTY-User-Key-File-\d+:',
     'vpn_or_tunnel': (
         r'(?i)(\bpsk\b|pre-shared|shared secret|auth-user-pass|remote\s+[\d.]+|tunnel\s+password)'
     ),
     'pem_private_block': r'-----BEGIN (RSA |OPENSSH |EC |DSA |ED25519 |)?PRIVATE KEY-----',
 }
+
+CRITICAL_PATTERN_CATEGORIES = frozenset({
+    'aws_secret_access_key',
+    'github_token',
+    'gitlab_token',
+    'slack_token',
+    'putty_private_key',
+    'pem_private_block',
+    'database_connection_string',
+})
+
+HIGH_PATTERN_CATEGORIES = frozenset({
+    'aws_access_key_id',
+    'google_api_key',
+    'jwt_token',
+    'basic_auth_url',
+    'password_assignment',
+    'password_spaced_value',
+    'secret_assignment',
+    'api_key_assignment',
+    'vpn_or_tunnel',
+})
+
+
+def _severity_for_category(category: str) -> str:
+    """Map detection categories to report-friendly severities."""
+    if category in CRITICAL_PATTERN_CATEGORIES:
+        return 'Critical'
+    if category in HIGH_PATTERN_CATEGORIES:
+        return 'High'
+    return 'Medium'
 
 
 def _defaults_for_filename(filename: str) -> dict:
@@ -73,6 +120,7 @@ def _defaults_for_filename(filename: str) -> dict:
         for k in (
             'password_assignment', 'password_spaced_value',
             'secret_assignment', 'api_key_assignment', 'vpn_or_tunnel',
+            'jwt_token', 'basic_auth_url',
         ):
             out.pop(k, None)
     elif fn.endswith(('.dic', '.aff')):
@@ -323,7 +371,8 @@ def check_sensitive_patterns(
         if security_pattern.search(content):
             results_list.append({
                 'category': 'security_keyword',
-                'match': 'Contains security-related keywords'
+                'match': 'Contains security-related keywords',
+                'severity': 'Medium',
             })
 
     user_patterns = PATTERNS.get('patterns') or {}
@@ -351,7 +400,8 @@ def check_sensitive_patterns(
                 if not any(fp.search(match_str) for fp in compiled_fps):
                     results_list.append({
                         'category': category,
-                        'match': match_str
+                        'match': match_str,
+                        'severity': _severity_for_category(category),
                     })
                     category_counts[category] += 1
 

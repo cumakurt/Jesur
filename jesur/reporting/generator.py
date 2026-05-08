@@ -6,7 +6,15 @@ from datetime import datetime
 from collections import Counter, defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
+from jesur import __version__
 from jesur.utils.common import normalize_smb_path
+
+DEVELOPER_INFO = {
+    "name": "Cuma KURT",
+    "github": "https://github.com/cumakurt/Jesur",
+    "linkedin": "https://www.linkedin.com/in/cuma-kurt-34414917/",
+    "version": __version__,
+}
 
 
 def _resolve_logo_source_path() -> Optional[str]:
@@ -70,6 +78,10 @@ def _render_fallback_html(
     network = escape(str(getattr(scan_args, 'network', 'N/A')))
     username = escape(str(getattr(scan_args, 'username', 'N/A')))
     domain = escape(str(getattr(scan_args, 'domain', 'N/A')))
+    developer_name = escape(DEVELOPER_INFO["name"])
+    github = escape(DEVELOPER_INFO["github"])
+    linkedin = escape(DEVELOPER_INFO["linkedin"])
+    version = escape(DEVELOPER_INFO["version"])
     lines = [
         "<!doctype html>",
         "<html><head><meta charset='utf-8'><title>JESUR Report</title><style>.brand-logo{width:50%;height:auto;}</style></head><body>",
@@ -86,7 +98,7 @@ def _render_fallback_html(
         f"<li>Sensitive findings: {len(sensitive_results)}</li>",
         "</ul>",
         "<h2>Accessed files</h2>",
-        "<table><thead><tr><th>IP</th><th>Share</th><th>Path</th><th>Size</th></tr></thead><tbody>",
+        "<table><thead><tr><th>IP</th><th>Share</th><th>Path</th><th>Size</th><th>Severity</th></tr></thead><tbody>",
     ]
     for file_info in all_files:
         lines.append(
@@ -95,13 +107,14 @@ def _render_fallback_html(
             f"<td>{escape(str(file_info.get('share', '')))}</td>"
             f"<td>{escape(str(file_info.get('path', '')))}</td>"
             f"<td>{escape(_human_bytes(file_info.get('size')))}</td>"
+            f"<td>{escape(str(file_info.get('severity', '')))}</td>"
             "</tr>"
         )
     lines.extend([
         "</tbody></table>",
         "<h2>Sensitive content</h2>",
         "<div id='filter-category-sensitive'></div>",
-        "<table><thead><tr><th>IP</th><th>Share</th><th>Path</th><th>Category</th><th>Match</th></tr></thead><tbody>",
+        "<table><thead><tr><th>IP</th><th>Share</th><th>Path</th><th>Severity</th><th>Category</th><th>Match</th></tr></thead><tbody>",
     ])
     for result in sensitive_results:
         lines.append(
@@ -109,6 +122,7 @@ def _render_fallback_html(
             f"<td>{escape(str(result.get('ip', '')))}</td>"
             f"<td>{escape(str(result.get('share', '')))}</td>"
             f"<td>{escape(str(result.get('path', '')))}</td>"
+            f"<td>{escape(str(result.get('severity', 'Medium')))}</td>"
             f"<td>{escape(str(result.get('category', '')))}</td>"
             f"<td>{escape(str(result.get('match', '')))}</td>"
             "</tr>"
@@ -120,6 +134,12 @@ def _render_fallback_html(
         "<script>",
         "const chartCategories = [];",
         "</script>",
+        "<footer>",
+        f"<p><strong>Developer:</strong> {developer_name}</p>",
+        f"<p><strong>GitHub:</strong> <a href=\"{github}\">{github}</a></p>",
+        f"<p><strong>LinkedIn:</strong> <a href=\"{linkedin}\">{linkedin}</a></p>",
+        f"<p><strong>JESUR version:</strong> {version}</p>",
+        "</footer>",
         "</body></html>",
     ])
     return "\n".join(lines)
@@ -228,6 +248,7 @@ def save_results(
             download_href_prefix=download_href_prefix,
             page_size=100,
             logo_href=logo_href,
+            developer=DEVELOPER_INFO,
         )
     else:
         html = _render_fallback_html(

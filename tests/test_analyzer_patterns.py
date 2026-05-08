@@ -20,6 +20,32 @@ def test_pem_block_detected():
     assert any(m['category'] == 'pem_private_block' for m in matches)
 
 
+def test_cloud_and_token_patterns_have_severity():
+    raw = (
+        b"aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\n"
+        b"token = ghp_abcdefghijklmnopqrstuvwxyz0123456789AB\n"
+        b"db = postgres://user:pass@db.example.local:5432/app\n"
+    )
+    matches = analyzer.check_sensitive_patterns(
+        raw, 'text/plain', '10.0.0.1', filename='secrets.env'
+    )
+    by_category = {m['category']: m for m in matches}
+    assert by_category['aws_secret_access_key']['severity'] == 'Critical'
+    assert by_category['github_token']['severity'] == 'Critical'
+    assert by_category['database_connection_string']['severity'] == 'Critical'
+
+
+def test_basic_auth_url_and_jwt_detected():
+    jwt = b"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signature123"
+    raw = b"url = https://admin:SuperSecret@example.local/login\njwt = " + jwt + b"\n"
+    matches = analyzer.check_sensitive_patterns(
+        raw, 'text/plain', '10.0.0.1', filename='notes.txt'
+    )
+    cats = {m['category'] for m in matches}
+    assert 'basic_auth_url' in cats
+    assert 'jwt_token' in cats
+
+
 def test_extract_text_uses_filename_for_unknown_mime():
     raw = b"password: x\n"
     text = analyzer._extract_text_for_pattern_scan(

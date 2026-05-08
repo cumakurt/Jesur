@@ -57,10 +57,10 @@ def export_to_csv(data, output_file, data_type='files'):
         
         with open(output_file, 'w', newline='', encoding='utf-8') as f:
             if data_type == 'files':
-                fieldnames = ['ip', 'share', 'path', 'size', 'file_type', 'create_time', 'last_write_time']
+                fieldnames = ['ip', 'share', 'path', 'size', 'file_type', 'severity', 'create_time', 'last_write_time']
                 writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
             else:  # sensitive
-                fieldnames = ['ip', 'share', 'path', 'category', 'match', 'file_type', 'downloaded_file']
+                fieldnames = ['ip', 'share', 'path', 'severity', 'category', 'match', 'file_type', 'downloaded_file']
                 writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
             
             writer.writeheader()

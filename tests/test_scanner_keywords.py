@@ -5,8 +5,10 @@ from jesur.core.scanner import (
     _get_safe_output_path,
     _is_known_benign_filename,
     _lookup_sensitive_filename,
+    _match_sensitive_path,
     _match_sensitive_keyword_filename,
     _sanitize_path,
+    _severity_for_sensitive_file,
 )
 
 
@@ -33,6 +35,10 @@ from jesur.core.scanner import (
         ("sacred.txt", None),
         ("id_rsa", "Key File"),
         ("nessus_report.xml", "Nessus Scan File"),
+        ("backup.zip", "Backup or Export File"),
+        ("db_dump.sql", "Backup or Export File"),
+        ("SharpHound.zip", "Assessment Tool Output"),
+        ("lsass.dmp", "Credential Extraction Artifact"),
     ],
 )
 def test_keyword_filename_matches(name, expected):
@@ -47,6 +53,19 @@ def test_known_benign_filename_excludes_thumbs_db():
 def test_sensitive_filename_lookup_is_case_insensitive():
     assert _lookup_sensitive_filename("ID_RSA") == "SSH RSA Private Key"
     assert _lookup_sensitive_filename("LOGIN DATA") == "Chrome/Edge Saved Passwords"
+    assert _lookup_sensitive_filename("NTDS.DIT") == "Active Directory Database"
+
+
+def test_path_aware_sensitive_matching():
+    assert _match_sensitive_path(r"Users\bob\.aws\credentials") == "AWS CLI Credentials"
+    assert _match_sensitive_path(r"Users\bob\.ssh\id_ed25519") == "SSH Credential Artifact"
+    assert _match_sensitive_path(r"Windows\System32\config\SAM") == "Windows Registry Hive"
+
+
+def test_sensitive_file_severity_mapping():
+    assert _severity_for_sensitive_file("SSH RSA Private Key") == "Critical"
+    assert _severity_for_sensitive_file("Active Directory Database") == "Critical"
+    assert _severity_for_sensitive_file("Environment Variables File") == "High"
 
 
 def test_sanitize_path_allows_normal_smb_names_and_blocks_traversal():

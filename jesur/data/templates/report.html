@@ -252,6 +252,9 @@
       white-space: nowrap;
     }
     .badge.red { background: #fff1f0; color: var(--red); }
+    .severity-critical { background: #fff1f0; color: var(--red); }
+    .severity-high { background: #fff7e6; color: var(--amber); }
+    .severity-medium { background: #eef4ff; color: #174ea6; }
     .empty {
       margin: 0;
       padding: 18px;
@@ -268,6 +271,31 @@
       justify-content: flex-end;
       color: var(--muted);
       font-size: 13px;
+    }
+    .report-footer {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 18px 20px 28px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .report-footer strong {
+      color: var(--text);
+      font-weight: 700;
+    }
+    .report-footer a {
+      color: var(--blue);
+      text-decoration: none;
+    }
+    .report-footer a:hover {
+      text-decoration: underline;
+    }
+    .developer-links {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 6px;
     }
     #back-to-top {
       position: fixed;
@@ -387,6 +415,7 @@
                 <th>Path</th>
                 <th>Size</th>
                 <th>Type</th>
+                <th>Severity</th>
                 <th>Modified</th>
               </tr>
             </thead>
@@ -399,6 +428,11 @@
                   <td><code>{{ file.get("path", "") }}</code></td>
                   <td>{{ file.get("size", 0) }}</td>
                   <td>{{ file.get("file_type", "") }}</td>
+                  <td>
+                    {% if file.get("severity") %}
+                    <span class="badge severity-{{ file.get("severity", "Medium")|lower }}">{{ file.get("severity") }}</span>
+                    {% endif %}
+                  </td>
                   <td>{{ file.get("last_write_time", "") }}</td>
                 </tr>
                 {% endfor %}
@@ -438,6 +472,7 @@
                 <th>Host</th>
                 <th>Share</th>
                 <th>Path</th>
+                <th>Severity</th>
                 <th>Category</th>
                 <th>Match</th>
                 <th>Type</th>
@@ -452,6 +487,7 @@
                     <td>{{ ip }}</td>
                     <td>{{ share }}</td>
                     <td><code>{{ result.get("path", "") }}</code></td>
+                    <td><span class="badge severity-{{ result.get("severity", "Medium")|lower }}">{{ result.get("severity", "Medium") }}</span></td>
                     <td><span class="badge red">{{ result.get("category", "") }}</span></td>
                     <td><code>{{ result.get("match", "") }}</code></td>
                     <td>{{ result.get("file_type", "") }}</td>
@@ -477,6 +513,17 @@
       </div>
     </section>
   </main>
+
+  <footer class="report-footer">
+    <div>
+      <strong>Developer:</strong> {{ developer.name }}
+      <span>| JESUR version {{ developer.version }}</span>
+    </div>
+    <div class="developer-links">
+      <a href="{{ developer.github }}">GitHub</a>
+      <a href="{{ developer.linkedin }}">LinkedIn</a>
+    </div>
+  </footer>
 
   <button id="back-to-top" type="button">Top</button>
 
